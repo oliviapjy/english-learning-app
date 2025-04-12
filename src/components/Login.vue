@@ -1,28 +1,33 @@
 <!-- src/components/Login.vue -->
 <template>
   <div class="login-container">
+    <!-- Back Arrow (visible on login/signup screens) -->
+    <button v-if="currentScreen !== 'choose'" class="back-arrow" @click="currentScreen = 'choose'">
+      ←
+    </button>
+
     <!-- Choose Screen (Initial) -->
     <div v-if="currentScreen === 'choose'" class="choose-screen">
       <div class="logo-container">
         <img src="../assets/app_logo.png" alt="App Logo" class="app-logo" />
       </div>
-      <h2>Welcome to English Buddy</h2>
-      <p>Improve your English through conversation</p>
-      
+      <h2>Welcome to TalkEase</h2>
+      <p>Improve your English through daily conversations</p>
+
       <div class="button-group">
         <button @click="currentScreen = 'login'" class="primary-btn">Login</button>
         <button @click="currentScreen = 'signup'" class="secondary-btn">Sign Up</button>
       </div>
     </div>
-    
+
     <!-- Login Screen -->
     <div v-if="currentScreen === 'login'" class="login-form">
       <div class="logo-container">
         <img src="../assets/app_logo.png" alt="App Logo" class="app-logo" />
       </div>
       <h2>Welcome Back</h2>
-      <p>Sign in to continue learning</p>
-      
+      <p>Sign in to continue your journey</p>
+
       <div class="form-group">
         <label for="email">Email</label>
         <input 
@@ -33,7 +38,7 @@
           required
         />
       </div>
-      
+
       <div class="form-group">
         <label for="password">Password</label>
         <input 
@@ -44,30 +49,29 @@
           required
         />
       </div>
-      
+
       <button @click="login" class="login-btn">Login</button>
-      <button @click="currentScreen = 'choose'" class="back-btn">Back</button>
-      
+
       <div v-if="error" class="error-message">{{ error }}</div>
     </div>
-    
+
     <!-- Signup Screen -->
     <div v-if="currentScreen === 'signup'" class="signup-form">
       <div class="logo-container">
         <img src="../assets/app_logo.png" alt="App Logo" class="app-logo" />
       </div>
       <h2>Create Your Account</h2>
-      
+
       <div class="form-group">
-        <label for="newName">Full Name</label>
+        <label for="newName">Username</label>
         <input 
           type="text" 
           id="newName" 
           v-model="newUser.name" 
-          placeholder="Enter your name"
+          placeholder="Enter your username"
         />
       </div>
-      
+
       <div class="form-group">
         <label for="newEmail">Email</label>
         <input 
@@ -77,7 +81,7 @@
           placeholder="Enter your email"
         />
       </div>
-      
+
       <div class="form-group">
         <label for="newPassword">Password</label>
         <input 
@@ -87,7 +91,7 @@
           placeholder="Choose a password"
         />
       </div>
-      
+
       <div class="form-group">
         <label for="confirmPassword">Confirm Password</label>
         <input 
@@ -97,10 +101,14 @@
           placeholder="Confirm your password"
         />
       </div>
-      
-      <button @click="signup" class="signup-btn">Sign Up</button>
-      <button @click="currentScreen = 'choose'" class="back-btn">Back</button>
-      
+
+      <div class="form-group terms-checkbox">
+        <input type="checkbox" id="terms" v-model="acceptTerms" />
+        <label for="terms">I accept the <a href="#" target="_blank">terms and conditions</a></label>
+      </div>
+
+      <button @click="signup" class="signup-btn" :disabled="!acceptTerms">Sign Up</button>
+
       <div v-if="signupError" class="error-message">{{ signupError }}</div>
     </div>
   </div>
@@ -120,7 +128,7 @@ export default {
     const currentScreen = ref('choose');
     const router = useRouter();
     const authStore = useAuthStore();
-    
+
     const newUser = ref({
       name: '',
       email: '',
@@ -128,45 +136,49 @@ export default {
       confirmPassword: ''
     });
     const signupError = ref('');
-    
+    const acceptTerms = ref(false);
+
     const login = async () => {
       if (!email.value || !password.value) {
         error.value = 'Please enter both email and password';
         return;
       }
-      
+
       try {
-        // In a real app, you would call your API here
         await authStore.login(email.value, password.value);
         router.push('/conversation');
       } catch (err) {
         error.value = err.message || 'Login failed. Please try again.';
       }
     };
-    
+
     const signup = async () => {
       if (!newUser.value.name || !newUser.value.email || !newUser.value.password) {
         signupError.value = 'Please fill in all fields';
         return;
       }
-      
+
       if (newUser.value.password !== newUser.value.confirmPassword) {
         signupError.value = 'Passwords do not match';
         return;
       }
-      
+
+      if (!acceptTerms.value) {
+        signupError.value = 'You must accept the terms and conditions';
+        return;
+      }
+
       try {
-        // In a real app, you would call your API here
         await authStore.signup(newUser.value);
         email.value = newUser.value.email;
         password.value = newUser.value.password;
         signupError.value = '';
-        currentScreen.value = 'login'; // Switch to login screen instead of auto-login
+        currentScreen.value = 'login';
       } catch (err) {
         signupError.value = err.message || 'Signup failed. Please try again.';
       }
     };
-    
+
     return {
       email,
       password,
@@ -175,7 +187,8 @@ export default {
       currentScreen,
       newUser,
       signupError,
-      signup
+      signup,
+      acceptTerms
     };
   }
 }
@@ -189,6 +202,18 @@ export default {
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.1);
   background: white;
+  position: relative;
+}
+
+.back-arrow {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #2c3e50;
 }
 
 .logo-container {
@@ -230,13 +255,23 @@ h2 {
   flex-direction: column;
 }
 
+.terms-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #2c3e50;
+}
+
 label {
   margin-bottom: 5px;
   font-weight: 500;
   color: #2c3e50;
 }
 
-input {
+input[type="text"],
+input[type="email"],
+input[type="password"] {
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -253,30 +288,42 @@ input {
 }
 
 .primary-btn, .login-btn, .signup-btn {
-  background-color: #42b983;
+  background-color: #000000;
   color: white;
+  padding: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.3s ease;
 }
 
 .primary-btn:hover, .login-btn:hover, .signup-btn:hover {
-  background-color: #3aa876;
+  background-color: rgb(53, 53, 53);
+  color: #ffffff;
 }
 
-.secondary-btn {
-  background-color: #3498db;
-  color: white;
+.secondary-btn, .back-btn {
+  background-color: white;
+  color: #000000;
+  padding: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.3s ease;
 }
 
-.secondary-btn:hover {
-  background-color: #2980b9;
+.secondary-btn:hover, .back-btn:hover {
+  background-color: #bebebe;
+  color: rgb(0, 0, 0);
 }
 
 .back-btn {
-  background-color: #95a5a6;
-  color: white;
+  background-color: #ffffff;
+  color: rgb(0, 0, 0);
 }
 
 .back-btn:hover {
-  background-color: #7f8c8d;
+  background-color: #000000;
 }
 
 .error-message {
