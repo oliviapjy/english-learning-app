@@ -146,7 +146,7 @@ export default {
 
       try {
         await authStore.login(email.value, password.value);
-        router.push('/conversation');
+        router.push('/home');
       } catch (err) {
         error.value = err.message || 'Login failed. Please try again.';
       }
