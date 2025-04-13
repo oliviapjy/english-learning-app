@@ -1,9 +1,11 @@
-// src/router/index.js
+// src/router/index.js (Updated)
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 
-// Import your components
+// Import components
 import Login from '../components/Login.vue';
+import HomeScreen from '../components/HomeScreen.vue';
+import NewConversation from '../components/NewConversation.vue';
 import Conversation from '../components/Conversation.vue';
 
 const routes = [
@@ -17,7 +19,19 @@ const routes = [
     component: Login
   },
   {
-    path: '/conversation',
+    path: '/home',
+    name: 'Home',
+    component: HomeScreen,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/new-conversation',
+    name: 'NewConversation',
+    component: NewConversation,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/conversation/:id',
     name: 'Conversation',
     component: Conversation,
     meta: { requiresAuth: true }
@@ -38,8 +52,8 @@ router.beforeEach((to, from, next) => {
     // Redirect to login page if not authenticated
     next('/login');
   } else if (to.path === '/login' && authStore.isLoggedIn) {
-    // Redirect to conversation page if already logged in
-    next('/conversation');
+    // Redirect to home page if already logged in
+    next('/home');
   } else {
     // Proceed as normal
     next();
