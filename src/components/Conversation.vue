@@ -35,12 +35,44 @@
       </div>
       
       <div class="user-input">
-        <textarea 
-          v-model="userMessage" 
-          placeholder="Type your message here..." 
-          @keyup.enter="sendMessage"
-        ></textarea>
-        <button @click="sendMessage" class="send-btn">Send</button>
+        <!-- Toggle button for switching between text and audio input -->
+        <div class="input-toggle">
+          <button 
+            :class="['toggle-btn', inputType === 'text' ? 'active' : '']" 
+            @click="inputType = 'text'"
+          >
+            Text
+          </button>
+          <button 
+            :class="['toggle-btn', inputType === 'audio' ? 'active' : '']" 
+            @click="inputType = 'audio'"
+          >
+            Audio
+          </button>
+        </div>
+
+        <!-- Text input - shown when inputType is 'text' -->
+        <div v-if="inputType === 'text'" class="text-input-container">
+          <textarea 
+            v-model="userMessage" 
+            placeholder="Type your message here..." 
+            @keyup.enter="sendMessage"
+          ></textarea>
+          <button @click="sendMessage" class="send-btn">Send</button>
+        </div>
+        
+        <!-- Audio input - shown when inputType is 'audio' -->
+        <div v-else class="audio-input-container">
+          <button 
+            @mousedown="startRecording" 
+            @mouseup="stopRecording"
+            @mouseleave="stopRecording"
+            :class="['record-btn', isRecording ? 'recording' : '']"
+          >
+            {{ isRecording ? 'Recording...' : 'Hold to Speak' }}
+          </button>
+          <p v-if="audioTranscript" class="audio-transcript">{{ audioTranscript }}</p>
+        </div>
       </div>
     </div>
   </div>
@@ -63,6 +95,13 @@ export default {
     const messagesContainer = ref(null);
     const userMessage = ref('');
     
+    // New refs for audio functionality
+    const inputType = ref('text'); // Default to text input
+    const isRecording = ref(false);
+    const audioTranscript = ref('');
+    let mediaRecorder = null;
+    let audioChunks = [];
+
     // Check if user is logged in
     onMounted(async () => {
       if (!authStore.isLoggedIn) {
@@ -134,6 +173,87 @@ export default {
         generateAIResponse(userQuery);
       }, 1000);
     };
+
+    // Audio recording functions
+    const startRecording = async () => {
+      try {
+        // Request microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Create new media recorder
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        // Listen for data available event
+        mediaRecorder.ondataavailable = (event) => {
+          audioChunks.push(event.data);
+        };
+        
+        // Listen for stop event
+        mediaRecorder.onstop = () => {
+          // Process recorded audio
+          processAudio();
+          
+          // Stop all audio tracks
+          stream.getTracks().forEach(track => track.stop());
+        };
+        
+        // Start recording
+        mediaRecorder.start();
+        isRecording.value = true;
+        audioTranscript.value = '';
+      } catch (err) {
+        console.error("Error accessing microphone:", err);
+        alert("Unable to access microphone. Please check permissions.");
+      }
+    };
+    
+    const stopRecording = () => {
+      if (mediaRecorder && isRecording.value) {
+        mediaRecorder.stop();
+        isRecording.value = false;
+      }
+    };
+    
+    const processAudio = async () => {
+      // In a real implementation, you would:
+      // 1. Convert audioChunks to a blob
+      // 2. Send to a speech-to-text API (like OpenAI's Whisper API)
+      // 3. Get the transcript and process it
+      
+      // For now, let's simulate this process
+  
+      
+      // Simulate processing delay
+      audioTranscript.value = "Processing your audio...";
+      
+      setTimeout(() => {
+        // Simulate a speech-to-text result
+        // In a real implementation, this would come from the API
+        const simulatedTranscript = generateSimulatedTranscript();
+        audioTranscript.value = simulatedTranscript;
+        
+        // Send the transcript as a message
+        if (simulatedTranscript) {
+          userMessage.value = simulatedTranscript;
+          sendMessage();
+        }
+      }, 1500);
+    };
+    
+    // Helper function to simulate speech-to-text for demo purposes
+    const generateSimulatedTranscript = () => {
+      const phrases = [
+        "Hello, how are you today?",
+        "Can you help me practice my English?",
+        "What's the weather like today?",
+        "I'd like to improve my pronunciation.",
+        "Could you recommend some vocabulary for business meetings?"
+      ];
+      
+      // Return a random phrase
+      return phrases[Math.floor(Math.random() * phrases.length)];
+    };
     
     const generateAIResponse = (query) => {
       if (!currentConversation.value) return;
@@ -179,6 +299,10 @@ export default {
       };
       
       conversationStore.addMessage(currentConversation.value.id, aiMessage);
+
+      // In a real implementation, you would also:
+      // 1. Convert the AI response to speech using a text-to-speech API
+      // 2. Play the audio for the user
     };
     
     const formatTime = (timestamp) => {
@@ -209,7 +333,13 @@ export default {
       formatTime,
       goHome,
       logout,
-      messagesContainer
+      messagesContainer,
+      // New exported properties for audio functionality
+      inputType,
+      isRecording,
+      audioTranscript,
+      startRecording,
+      stopRecording
     };
   }
 }
@@ -362,9 +492,47 @@ h3 {
 
 .user-input {
   display: flex;
+  flex-direction: column;
   padding: 15px;
   background-color: white;
   border-top: 1px solid #ddd;
+  gap: 10px;
+}
+
+/* Input toggle styles */
+.input-toggle {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+  border-radius: 20px;
+  background-color: #f0f0f0;
+  padding: 3px;
+  width: 200px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.toggle-btn {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #7f8c8d;
+  transition: all 0.3s ease;
+}
+
+.toggle-btn.active {
+  background-color: #3498db;
+  color: white;
+}
+
+/* Text input styles */
+.text-input-container {
+  display: flex;
 }
 
 textarea {
@@ -390,5 +558,56 @@ textarea {
 
 .send-btn:hover {
   background-color: #2980b9;
+}
+
+/* Audio input styles */
+.audio-input-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.record-btn {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 30px;
+  padding: 12px 24px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 50%;
+}
+
+.record-btn:hover {
+  background-color: #2980b9;
+}
+
+.record-btn.recording {
+  background-color: #e74c3c;
+  animation: pulse 1.5s infinite;
+}
+
+.audio-transcript {
+  margin: 10px 0 0;
+  font-style: italic;
+  color: #7f8c8d;
+  font-size: 14px;
+  text-align: center;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>
