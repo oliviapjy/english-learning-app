@@ -33,6 +33,14 @@
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
         </div>
       </div>
+
+      <div v-if="isLoading" class="loading-indicator">
+        <div class="typing-indicator">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
       
       <div class="user-input">
         <!-- Toggle button for switching between text and audio input -->
@@ -83,6 +91,7 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useConversationStore } from '../stores/conversation';
+import apiService from '../services/api'; // Import the API service
 
 export default {
   name: 'ConversationComponent',
@@ -101,6 +110,9 @@ export default {
     const audioTranscript = ref('');
     let mediaRecorder = null;
     let audioChunks = [];
+    
+    // New ref for loading state
+    const isLoading = ref(false);
 
     // Check if user is logged in
     onMounted(async () => {
@@ -150,31 +162,57 @@ export default {
     });
     
     const sendMessage = async () => {
-      if (!userMessage.value.trim() || !currentConversation.value) return;
-      
-      // Add user message to chat
-      const message = {
-        sender: 'user',
-        text: userMessage.value,
+  if (!userMessage.value.trim() || !currentConversation.value) return;
+  
+  // Add user message to chat
+  const message = {
+    sender: 'user',
+    text: userMessage.value,
+    timestamp: new Date()
+  };
+  
+  conversationStore.addMessage(currentConversation.value.id, message);
+  
+  const userQuery = userMessage.value;
+  userMessage.value = '';
+  
+  // Scroll to bottom
+  await nextTick();
+  scrollToBottom();
+  
+  // Show loading state
+  isLoading.value = true;
+  
+  try {
+    // Prepare conversation history for context
+    const previousMessages = messages.value.map(msg => ({
+      role: msg.sender === 'user' ? 'user' : 'assistant',
+      content: msg.text
+    }));
+    
+    // Use the API service to get GPT response with context
+    const response = await apiService.sendMessage(userQuery, previousMessages);
+    
+    if (response.data && response.data.reply) {
+      // Add AI response to chat
+      const aiMessage = {
+        sender: 'ai',
+        text: response.data.reply,
         timestamp: new Date()
       };
       
-      conversationStore.addMessage(currentConversation.value.id, message);
-      
-      const userQuery = userMessage.value;
-      userMessage.value = '';
-      
-      // Scroll to bottom
-      await nextTick();
-      scrollToBottom();
-      
-      // Simulate AI response
-      setTimeout(() => {
-        generateAIResponse(userQuery);
-      }, 1000);
-    };
-
-    // Audio recording functions
+      conversationStore.addMessage(currentConversation.value.id, aiMessage);
+    } else if (response.data && response.data.error) {
+      // Handle API error
+      // ...existing code...
+    }
+  } catch (error) {
+    // ...existing error handling code...
+  } finally {
+    isLoading.value = false;
+  }
+};
+    // Audio recording functions - keep your existing code
     const startRecording = async () => {
       try {
         // Request microphone access
@@ -222,9 +260,6 @@ export default {
       // 3. Get the transcript and process it
       
       // For now, let's simulate this process
-  
-      
-      // Simulate processing delay
       audioTranscript.value = "Processing your audio...";
       
       setTimeout(() => {
@@ -253,56 +288,6 @@ export default {
       
       // Return a random phrase
       return phrases[Math.floor(Math.random() * phrases.length)];
-    };
-    
-    const generateAIResponse = (query) => {
-      if (!currentConversation.value) return;
-      
-      // Similar to the original component's logic
-      let response = "I'm sorry, I didn't understand that. Could you please rephrase?";
-      
-      const topic = currentConversation.value.topic.title;
-      
-      if (topic === 'Everyday Conversations') {
-        if (query.toLowerCase().includes('hello') || query.toLowerCase().includes('hi')) {
-          response = "Hi there! It's nice to meet you. How are you doing today?";
-        } else if (query.toLowerCase().includes('how are you')) {
-          response = "I'm doing well, thank you for asking! How about yourself?";
-        } else if (query.toLowerCase().includes('weather')) {
-          response = "Talking about the weather is a common topic in English conversations! What's the weather like where you are?";
-        }
-      } else if (topic === 'Business English') {
-        if (query.toLowerCase().includes('meeting')) {
-          response = "Meetings are an important part of business communication. Some useful phrases include 'Let's get started', 'I'd like to discuss', and 'Does anyone have any questions?'";
-        } else if (query.toLowerCase().includes('email')) {
-          response = "Professional emails typically start with 'Dear' followed by the recipient's name or title. Would you like to practice writing a business email?";
-        }
-      } else if (topic === 'Travel & Culture') {
-        if (query.toLowerCase().includes('travel') || query.toLowerCase().includes('trip')) {
-          response = "Planning a trip? Some useful phrases when traveling are 'Where is...?', 'How much does this cost?', and 'Could you recommend...?'";
-        } else if (query.toLowerCase().includes('food') || query.toLowerCase().includes('cuisine')) {
-          response = "Discussing local cuisine is a great way to connect with people while traveling! You can ask 'What's a traditional dish here?' or say 'I'd like to try something authentic.'";
-        }
-      } else if (topic === 'Academic Discussions') {
-        if (query.toLowerCase().includes('opinion') || query.toLowerCase().includes('think')) {
-          response = "When expressing opinions in an academic context, you might say 'In my view,' 'Based on the evidence,' or 'Research suggests that...' followed by your perspective.";
-        } else if (query.toLowerCase().includes('argument') || query.toLowerCase().includes('debate')) {
-          response = "In academic debates, it's important to acknowledge opposing viewpoints. You can use phrases like 'While some argue that...', 'On the other hand...', or 'Nevertheless...'";
-        }
-      }
-      
-      // Add AI response to chat
-      const aiMessage = {
-        sender: 'ai',
-        text: response,
-        timestamp: new Date()
-      };
-      
-      conversationStore.addMessage(currentConversation.value.id, aiMessage);
-
-      // In a real implementation, you would also:
-      // 1. Convert the AI response to speech using a text-to-speech API
-      // 2. Play the audio for the user
     };
     
     const formatTime = (timestamp) => {
@@ -334,16 +319,19 @@ export default {
       goHome,
       logout,
       messagesContainer,
-      // New exported properties for audio functionality
+      // Audio functionality
       inputType,
       isRecording,
       audioTranscript,
       startRecording,
-      stopRecording
+      stopRecording,
+      // New loading state
+      isLoading
     };
   }
 }
 </script>
+
 
 <style scoped>
 .conversation-container {
@@ -594,6 +582,54 @@ textarea {
   color: #7f8c8d;
   font-size: 14px;
   text-align: center;
+}
+
+.message.ai.loading:after {
+  content: "...";
+  animation: dots 1s infinite;
+}
+
+.loading-indicator {
+  padding: 10px 20px;
+  align-self: flex-start;
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.typing-indicator span {
+  height: 8px;
+  width: 8px;
+  background-color: #bbb;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 5px;
+  animation: bounce 1.5s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes dots {
+  0%, 20% { content: "."; }
+  40% { content: ".."; }
+  60%, 100% { content: "..."; }
 }
 
 @keyframes pulse {
