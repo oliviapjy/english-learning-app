@@ -1,4 +1,4 @@
-<!-- src/components/Conversation.vue (Updated) -->
+<!-- src/components/Conversation.vue (Updated with Voice Features) -->
 <template>
   <div class="conversation-container">
     <div class="sidebar">
@@ -30,6 +30,11 @@
           :class="['message', message.sender]"
         >
           <div class="message-content">{{ message.text }}</div>
+          <div class="message-actions" v-if="message.sender === 'ai'">
+            <button @click="playAudio(message.text)" class="play-audio-btn">
+              🔊
+            </button>
+          </div>
           <div class="message-time">{{ formatTime(message.timestamp) }}</div>
         </div>
       </div>
@@ -104,14 +109,17 @@ export default {
     const messagesContainer = ref(null);
     const userMessage = ref('');
     
-    // New refs for audio functionality
+    // Refs for audio functionality
     const inputType = ref('text'); // Default to text input
     const isRecording = ref(false);
     const audioTranscript = ref('');
     let mediaRecorder = null;
     let audioChunks = [];
     
-    // New ref for loading state
+    // Audio playback tracking
+    let currentAudio = null;
+
+    // Ref for loading state
     const isLoading = ref(false);
 
     // Check if user is logged in
@@ -162,89 +170,98 @@ export default {
     });
     
     const sendMessage = async () => {
-  if (!userMessage.value.trim() || !currentConversation.value) return;
-  
-  // Add user message to chat
-  const message = {
-    sender: 'user',
-    text: userMessage.value,
-    timestamp: new Date()
-  };
-  
-  conversationStore.addMessage(currentConversation.value.id, message);
-  
-  const userQuery = userMessage.value;
-  userMessage.value = '';
-  
-  // Scroll to bottom
-  await nextTick();
-  scrollToBottom();
-  
-  // Show loading state
-  isLoading.value = true;
-  
-  try {
-    // Prepare conversation history for context
-    const previousMessages = messages.value.map(msg => ({
-      role: msg.sender === 'user' ? 'user' : 'assistant',
-      content: msg.text
-    }));
-    
-    // Use the API service to get GPT response with context
-    const response = await apiService.sendMessage(userQuery, previousMessages);
-    
-    if (response.data && response.data.reply) {
-      // Add AI response to chat
-      const aiMessage = {
-        sender: 'ai',
-        text: response.data.reply,
+      if (!userMessage.value.trim() || !currentConversation.value) return;
+      
+      // Add user message to chat
+      const message = {
+        sender: 'user',
+        text: userMessage.value,
         timestamp: new Date()
       };
       
-      conversationStore.addMessage(currentConversation.value.id, aiMessage);
-    } else if (response.data && response.data.error) {
-      // Handle API error
-      // ...existing code...
-    }
-  } catch (error) {
-    // ...existing error handling code...
-  } finally {
-    isLoading.value = false;
-  }
-};
-    // Audio recording functions - keep your existing code
-    const startRecording = async () => {
+      conversationStore.addMessage(currentConversation.value.id, message);
+      
+      const userQuery = userMessage.value;
+      userMessage.value = '';
+      
+      // Scroll to bottom
+      await nextTick();
+      scrollToBottom();
+      
+      // Show loading state
+      isLoading.value = true;
+      
       try {
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Prepare conversation history for context
+        const previousMessages = messages.value.map(msg => ({
+          role: msg.sender === 'user' ? 'user' : 'assistant',
+          content: msg.text
+        }));
         
-        // Create new media recorder
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
+        // Use the API service to get GPT response with context
+        const response = await apiService.sendMessage(userQuery, previousMessages);
         
-        // Listen for data available event
-        mediaRecorder.ondataavailable = (event) => {
-          audioChunks.push(event.data);
-        };
-        
-        // Listen for stop event
-        mediaRecorder.onstop = () => {
-          // Process recorded audio
-          processAudio();
+        if (response.data && response.data.reply) {
+          // Add AI response to chat
+          const aiMessage = {
+            sender: 'ai',
+            text: response.data.reply,
+            timestamp: new Date()
+          };
           
-          // Stop all audio tracks
-          stream.getTracks().forEach(track => track.stop());
-        };
-        
-        // Start recording
-        mediaRecorder.start();
-        isRecording.value = true;
-        audioTranscript.value = '';
-      } catch (err) {
-        console.error("Error accessing microphone:", err);
-        alert("Unable to access microphone. Please check permissions.");
+          conversationStore.addMessage(currentConversation.value.id, aiMessage);
+          
+          // Automatically play the response if in audio mode
+          if (inputType.value === 'audio') {
+            // Wait for message to be added and UI to update
+            await nextTick();
+            // Then play the audio
+            playAudio(response.data.reply);
+          }
+        } else if (response.data && response.data.error) {
+          console.error("API error:", response.data.error);
+        }
+      } catch (error) {
+        console.error("Error sending message:", error);
+      } finally {
+        isLoading.value = false;
       }
     };
+    
+      const startRecording = async () => {
+    try {
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Create new media recorder with a MIME type that Whisper supports
+      // Using audio/webm is generally well-supported
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      audioChunks = [];
+      
+      // Listen for data available event
+      mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
+      };
+      
+      // Listen for stop event
+      mediaRecorder.onstop = () => {
+        // Process recorded audio
+        processAudio();
+        
+        // Stop all audio tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      // Start recording with smaller time slices to improve quality
+      mediaRecorder.start(100); // Capture in 100ms chunks
+      isRecording.value = true;
+      audioTranscript.value = '';
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Unable to access microphone. Please check permissions.");
+    }
+  };
+
     
     const stopRecording = () => {
       if (mediaRecorder && isRecording.value) {
@@ -253,42 +270,92 @@ export default {
       }
     };
     
-    const processAudio = async () => {
-      // In a real implementation, you would:
-      // 1. Convert audioChunks to a blob
-      // 2. Send to a speech-to-text API (like OpenAI's Whisper API)
-      // 3. Get the transcript and process it
-      
-      // For now, let's simulate this process
-      audioTranscript.value = "Processing your audio...";
-      
-      setTimeout(() => {
-        // Simulate a speech-to-text result
-        // In a real implementation, this would come from the API
-        const simulatedTranscript = generateSimulatedTranscript();
-        audioTranscript.value = simulatedTranscript;
-        
-        // Send the transcript as a message
-        if (simulatedTranscript) {
-          userMessage.value = simulatedTranscript;
-          sendMessage();
-        }
-      }, 1500);
-    };
+// Update the processAudio function to include better error logging
+const processAudio = async () => {
+  if (audioChunks.length === 0) return;
+  
+  // Show processing message
+  audioTranscript.value = "Processing your audio...";
+  isLoading.value = true;
+  
+  try {
+    // Create audio blob from chunks
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     
-    // Helper function to simulate speech-to-text for demo purposes
-    const generateSimulatedTranscript = () => {
-      const phrases = [
-        "Hello, how are you today?",
-        "Can you help me practice my English?",
-        "What's the weather like today?",
-        "I'd like to improve my pronunciation.",
-        "Could you recommend some vocabulary for business meetings?"
-      ];
+    console.log("Audio blob size:", audioBlob.size);
+    if (audioBlob.size < 100) {
+      audioTranscript.value = "Audio too short, please try again.";
+      isLoading.value = false;
+      return;
+    }
+    
+    // Send to backend for transcription
+    const response = await apiService.transcribeAudio(audioBlob);
+    
+    if (response.data && response.data.transcription) {
+      // Update transcript with actual transcription
+      audioTranscript.value = response.data.transcription;
       
-      // Return a random phrase
-      return phrases[Math.floor(Math.random() * phrases.length)];
-    };
+      // Use the transcript as a message
+      userMessage.value = response.data.transcription;
+      sendMessage();
+    } else if (response.data && response.data.error) {
+      audioTranscript.value = "Error: Could not transcribe audio.";
+      console.error("Transcription error:", response.data.error);
+    }
+  } catch (error) {
+    audioTranscript.value = "Error processing audio.";
+    console.error("Audio processing error:", error);
+    // Log detailed error information
+    if (error.response) {
+      console.error("Response data:", error.response.data);
+      console.error("Response status:", error.response.status);
+    }
+  } finally {
+    isLoading.value = false;
+  }
+};
+    
+const playAudio = async (text) => {
+  try {
+    // Stop any currently playing audio
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+    
+    isLoading.value = true;
+    const response = await apiService.textToSpeech(text);
+    
+    if (response.data && response.data.audio_base64) {
+      // Convert base64 to audio and play
+      const audio = new Audio(`data:audio/mp3;base64,${response.data.audio_base64}`);
+      
+      // Track the current audio instance
+      currentAudio = audio;
+      
+      // Set up event listener to clear currentAudio when playback ends
+      audio.onended = () => {
+        currentAudio = null;
+      };
+      
+      // Add error handling for audio playback
+      audio.onerror = (error) => {
+        console.error("Audio playback error:", error);
+        currentAudio = null;
+      };
+      
+      // Begin playback
+      audio.play();
+    } else if (response.data && response.data.error) {
+      console.error("TTS error:", response.data.error);
+    }
+  } catch (error) {
+    console.error("Error playing audio:", error);
+  } finally {
+    isLoading.value = false;
+  }
+};
     
     const formatTime = (timestamp) => {
       return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -325,13 +392,13 @@ export default {
       audioTranscript,
       startRecording,
       stopRecording,
-      // New loading state
+      playAudio,
+      // Loading state
       isLoading
     };
   }
 }
 </script>
-
 
 <style scoped>
 .conversation-container {
@@ -478,6 +545,25 @@ h3 {
   text-align: right;
 }
 
+.message-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 5px;
+}
+
+.play-audio-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.play-audio-btn:hover {
+  opacity: 1;
+}
+
 .user-input {
   display: flex;
   flex-direction: column;
@@ -582,11 +668,6 @@ textarea {
   color: #7f8c8d;
   font-size: 14px;
   text-align: center;
-}
-
-.message.ai.loading:after {
-  content: "...";
-  animation: dots 1s infinite;
 }
 
 .loading-indicator {
