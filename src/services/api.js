@@ -18,22 +18,28 @@ export default {
     });
   },
   
-// Updated transcribeAudio method in api.js
-transcribeAudio(audioBlob) {
-  // Create a proper audio file with extension to help the server identify the format
-  const audioFile = new File([audioBlob], "recording.webm", {
-    type: "audio/webm",
-  });
-  
-  const formData = new FormData();
-  formData.append('file', audioFile);
-  
-  // Log the request for debugging
-  console.log("Sending audio file, size:", audioFile.size);
-  
-  return apiClient.post('/transcribe', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
-  });
-}};
+  // Transcribe audio file
+  transcribeAudio(audioBlob) {
+    // Create a proper audio file with extension to help the server identify the format
+    const audioFile = new File([audioBlob], "recording.webm", {
+      type: "audio/webm",
+    });
+    
+    const formData = new FormData();
+    formData.append('file', audioFile);
+    
+    // Log the request for debugging
+    console.log("Sending audio file, size:", audioFile.size);
+    
+    return apiClient.post('/transcribe', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
+
+  // Text to speech conversion
+  textToSpeech(text) {
+    return apiClient.post('/tts', { text });
+  }
+};

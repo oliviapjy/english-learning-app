@@ -228,41 +228,57 @@ export default {
       }
     };
     
-      const startRecording = async () => {
-    try {
-      // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Create new media recorder with a MIME type that Whisper supports
-      // Using audio/webm is generally well-supported
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      audioChunks = [];
-      
-      // Listen for data available event
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunks.push(event.data);
-      };
-      
-      // Listen for stop event
-      mediaRecorder.onstop = () => {
-        // Process recorded audio
-        processAudio();
+    const startRecording = async () => {
+      try {
+        // Request microphone access
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
-        // Stop all audio tracks
-        stream.getTracks().forEach(track => track.stop());
-      };
-      
-      // Start recording with smaller time slices to improve quality
-      mediaRecorder.start(100); // Capture in 100ms chunks
-      isRecording.value = true;
-      audioTranscript.value = '';
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-      alert("Unable to access microphone. Please check permissions.");
-    }
-  };
+        // Create new media recorder with a MIME type that Whisper supports
+        // Check if audio/webm is supported, otherwise try audio/mp4
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+          ? 'audio/webm' 
+          : MediaRecorder.isTypeSupported('audio/mp4') 
+            ? 'audio/mp4'
+            : '';
+        
+        if (!mimeType) {
+          console.error("No supported audio MIME type found");
+          alert("Your browser doesn't support the required audio recording formats.");
+          return;
+        }
+        
+        console.log(`Using MIME type: ${mimeType}`);
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        audioChunks = [];
+        
+        // Listen for data available event
+        mediaRecorder.ondataavailable = (event) => {
+          console.log(`Audio chunk size: ${event.data.size}`);
+          if (event.data.size > 0) {
+            audioChunks.push(event.data);
+          }
+        };
+        
+        // Listen for stop event
+        mediaRecorder.onstop = () => {
+          console.log(`Recording stopped. Total chunks: ${audioChunks.length}`);
+          // Process recorded audio
+          processAudio();
+          
+          // Stop all audio tracks
+          stream.getTracks().forEach(track => track.stop());
+        };
+        
+        // Start recording with smaller time slices
+        mediaRecorder.start(100); // Capture in 100ms chunks
+        isRecording.value = true;
+        audioTranscript.value = '';
+      } catch (err) {
+        console.error("Error accessing microphone:", err);
+        alert("Unable to access microphone. Please check permissions.");
+      }
+    };
 
-    
     const stopRecording = () => {
       if (mediaRecorder && isRecording.value) {
         mediaRecorder.stop();
@@ -270,92 +286,120 @@ export default {
       }
     };
     
-// Update the processAudio function to include better error logging
-const processAudio = async () => {
-  if (audioChunks.length === 0) return;
-  
-  // Show processing message
-  audioTranscript.value = "Processing your audio...";
-  isLoading.value = true;
-  
-  try {
-    // Create audio blob from chunks
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    
-    console.log("Audio blob size:", audioBlob.size);
-    if (audioBlob.size < 100) {
-      audioTranscript.value = "Audio too short, please try again.";
-      isLoading.value = false;
-      return;
-    }
-    
-    // Send to backend for transcription
-    const response = await apiService.transcribeAudio(audioBlob);
-    
-    if (response.data && response.data.transcription) {
-      // Update transcript with actual transcription
-      audioTranscript.value = response.data.transcription;
+    const processAudio = async () => {
+      if (audioChunks.length === 0) {
+        audioTranscript.value = "No audio recorded. Please try again.";
+        return;
+      }
       
-      // Use the transcript as a message
-      userMessage.value = response.data.transcription;
-      sendMessage();
-    } else if (response.data && response.data.error) {
-      audioTranscript.value = "Error: Could not transcribe audio.";
-      console.error("Transcription error:", response.data.error);
-    }
-  } catch (error) {
-    audioTranscript.value = "Error processing audio.";
-    console.error("Audio processing error:", error);
-    // Log detailed error information
-    if (error.response) {
-      console.error("Response data:", error.response.data);
-      console.error("Response status:", error.response.status);
-    }
-  } finally {
-    isLoading.value = false;
-  }
-};
+      // Show processing message
+      audioTranscript.value = "Processing your audio...";
+      isLoading.value = true;
+      
+      try {
+        // Create audio blob from chunks
+        const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+        
+        console.log("Audio blob created:", {
+          size: `${audioBlob.size} bytes`,
+          type: audioBlob.type
+        });
+        
+        if (audioBlob.size < 100) {
+          audioTranscript.value = "Audio too short, please try again.";
+          isLoading.value = false;
+          return;
+        }
+        
+        // For debugging - create an audio element to test the recording
+        const audioUrl = URL.createObjectURL(audioBlob);
+        console.log("Debug audio URL:", audioUrl);
+        // You can uncomment this to test the audio in browser
+        // const debugAudio = new Audio(audioUrl);
+        // debugAudio.play();
+        
+        // Send to backend for transcription
+        const response = await apiService.transcribeAudio(audioBlob);
+        
+        if (response.data && response.data.transcription) {
+          console.log("Transcription received:", response.data.transcription);
+          // Update transcript with actual transcription
+          audioTranscript.value = response.data.transcription;
+          
+          // Use the transcript as a message
+          userMessage.value = response.data.transcription;
+          sendMessage();
+        } else if (response.data && response.data.error) {
+          audioTranscript.value = "Error: Could not transcribe audio.";
+          console.error("Transcription error:", response.data.error);
+        }
+      } catch (error) {
+        audioTranscript.value = "Error processing audio.";
+        console.error("Audio processing error:", error);
+        // Log detailed error information
+        if (error.response) {
+          console.error("Response data:", error.response.data);
+          console.error("Response status:", error.response.status);
+        }
+      } finally {
+        isLoading.value = false;
+      }
+    };
     
-const playAudio = async (text) => {
-  try {
-    // Stop any currently playing audio
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
-    }
-    
-    isLoading.value = true;
-    const response = await apiService.textToSpeech(text);
-    
-    if (response.data && response.data.audio_base64) {
-      // Convert base64 to audio and play
-      const audio = new Audio(`data:audio/mp3;base64,${response.data.audio_base64}`);
-      
-      // Track the current audio instance
-      currentAudio = audio;
-      
-      // Set up event listener to clear currentAudio when playback ends
-      audio.onended = () => {
-        currentAudio = null;
-      };
-      
-      // Add error handling for audio playback
-      audio.onerror = (error) => {
-        console.error("Audio playback error:", error);
-        currentAudio = null;
-      };
-      
-      // Begin playback
-      audio.play();
-    } else if (response.data && response.data.error) {
-      console.error("TTS error:", response.data.error);
-    }
-  } catch (error) {
-    console.error("Error playing audio:", error);
-  } finally {
-    isLoading.value = false;
-  }
-};
+    const playAudio = async (text) => {
+      try {
+        // Stop any currently playing audio
+        if (currentAudio) {
+          currentAudio.pause();
+          currentAudio = null;
+        }
+        
+        if (!text || text.trim() === '') {
+          console.error("Empty text provided to TTS function");
+          return;
+        }
+        
+        console.log(`Converting text to speech: ${text.length} characters`);
+        isLoading.value = true;
+        
+        // Truncate text if needed (OpenAI has limits)
+        const truncatedText = text.length > 4000 ? text.substring(0, 4000) : text;
+        
+        const response = await apiService.textToSpeech(truncatedText);
+        
+        if (response.data && response.data.audio_base64) {
+          console.log(`Received audio data: ${response.data.audio_base64.length} characters`);
+          
+          // Convert base64 to audio and play
+          const audio = new Audio(`data:audio/mp3;base64,${response.data.audio_base64}`);
+          
+          // Track the current audio instance
+          currentAudio = audio;
+          
+          // Set up event listener to clear currentAudio when playback ends
+          audio.onended = () => {
+            currentAudio = null;
+          };
+          
+          // Add error handling for audio playback
+          audio.onerror = (error) => {
+            console.error("Audio playback error:", error);
+            currentAudio = null;
+          };
+          
+          // Begin playback
+          audio.play().catch(err => {
+            console.error("Audio play failed:", err);
+          });
+        } else if (response.data && response.data.error) {
+          console.error("TTS error:", response.data.error);
+        }
+      } catch (error) {
+        console.error("Error playing audio:", error);
+      } finally {
+        isLoading.value = false;
+      }
+    };
     
     const formatTime = (timestamp) => {
       return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
