@@ -109,6 +109,10 @@ export default {
     const messagesContainer = ref(null);
     const userMessage = ref('');
     
+    const audioContext = ref(null);
+    const analyser = ref(null);
+    const audioLevel = ref(0);
+
     // Refs for audio functionality
     const inputType = ref('text'); // Default to text input
     const isRecording = ref(false);
@@ -228,28 +232,63 @@ export default {
       }
     };
     
-    const startRecording = async () => {
-      try {
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Modify the startRecording function
+      const startRecording = async () => {
+        try {
+          // Request microphone with better constraints
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            } 
+          });
+          
+          // Use higher quality audio settings
+          const options = {
+            mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+              ? 'audio/webm;codecs=opus' 
+              : MediaRecorder.isTypeSupported('audio/mp4') 
+                ? 'audio/mp4'
+                : 'audio/webm',
+            audioBitsPerSecond: 128000 // Higher bitrate for better quality
+          };
         
-        // Create new media recorder with a MIME type that Whisper supports
-        // Check if audio/webm is supported, otherwise try audio/mp4
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
-          ? 'audio/webm' 
-          : MediaRecorder.isTypeSupported('audio/mp4') 
-            ? 'audio/mp4'
-            : '';
-        
-        if (!mimeType) {
-          console.error("No supported audio MIME type found");
-          alert("Your browser doesn't support the required audio recording formats.");
-          return;
-        }
-        
-        console.log(`Using MIME type: ${mimeType}`);
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-        audioChunks = [];
+          if (!audioContext.value) {
+  audioContext.value = new (window.AudioContext || window.webkitAudioContext)();
+  analyser.value = audioContext.value.createAnalyser();
+  
+  const source = audioContext.value.createMediaStreamSource(stream);
+  source.connect(analyser.value);
+  
+  // Setup audio level monitoring
+  const dataArray = new Uint8Array(analyser.value.frequencyBinCount);
+  const checkAudioLevel = () => {
+    if (isRecording.value) {
+      analyser.value.getByteFrequencyData(dataArray);
+      
+      // Calculate average volume
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i];
+      }
+      audioLevel.value = sum / dataArray.length;
+      
+      // If audio level is too low, show warning
+      if (audioLevel.value < 10 && isRecording.value) {
+        console.log("Warning: Audio level is very low", audioLevel.value);
+        // Could add UI element to show this warning
+      }
+      
+      requestAnimationFrame(checkAudioLevel);
+    }
+  };
+  checkAudioLevel();
+}  
+
+          console.log(`Using MIME type: ${options.mimeType}`);
+          mediaRecorder = new MediaRecorder(stream, options);
+          audioChunks = [];
         
         // Listen for data available event
         mediaRecorder.ondataavailable = (event) => {
@@ -287,64 +326,69 @@ export default {
     };
     
     const processAudio = async () => {
-      if (audioChunks.length === 0) {
-        audioTranscript.value = "No audio recorded. Please try again.";
-        return;
-      }
+  if (audioChunks.length === 0) {
+    audioTranscript.value = "No audio recorded. Please try again.";
+    return;
+  }
+  
+  // Show processing message
+  audioTranscript.value = "Processing your audio...";
+  isLoading.value = true;
+  
+  try {
+    // Create audio blob from chunks - DEFINE THIS FIRST
+    const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+    
+    console.log("Audio blob created:", {
+      size: `${audioBlob.size} bytes`,
+      type: audioBlob.type
+    });
+    
+    if (audioBlob.size < 100) {
+      audioTranscript.value = "Audio too short, please try again.";
+      isLoading.value = false;
+      return;
+    }
+    
+    // For debugging - create an audio element to test the recording
+    const audioUrl = URL.createObjectURL(audioBlob);
+    console.log("Debug audio URL:", audioUrl);
+    
+    // Optional debug element (only if needed)
+    // const debugAudioEl = document.createElement('audio');
+    // debugAudioEl.controls = true;
+    // debugAudioEl.style.display = 'none'; 
+    // debugAudioEl.src = audioUrl;
+    // document.body.appendChild(debugAudioEl);
+    // console.log("Debug audio element added to DOM");
+    
+    // Send to backend for transcription
+    const response = await apiService.transcribeAudio(audioBlob);
+    
+    if (response.data && response.data.transcription) {
+      console.log("Transcription received:", response.data.transcription);
+      // Update transcript with actual transcription
+      audioTranscript.value = response.data.transcription;
       
-      // Show processing message
-      audioTranscript.value = "Processing your audio...";
-      isLoading.value = true;
-      
-      try {
-        // Create audio blob from chunks
-        const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-        
-        console.log("Audio blob created:", {
-          size: `${audioBlob.size} bytes`,
-          type: audioBlob.type
-        });
-        
-        if (audioBlob.size < 100) {
-          audioTranscript.value = "Audio too short, please try again.";
-          isLoading.value = false;
-          return;
-        }
-        
-        // For debugging - create an audio element to test the recording
-        const audioUrl = URL.createObjectURL(audioBlob);
-        console.log("Debug audio URL:", audioUrl);
-        // You can uncomment this to test the audio in browser
-        // const debugAudio = new Audio(audioUrl);
-        // debugAudio.play();
-        
-        // Send to backend for transcription
-        const response = await apiService.transcribeAudio(audioBlob);
-        
-        if (response.data && response.data.transcription) {
-          console.log("Transcription received:", response.data.transcription);
-          // Update transcript with actual transcription
-          audioTranscript.value = response.data.transcription;
-          
-          // Use the transcript as a message
-          userMessage.value = response.data.transcription;
-          sendMessage();
-        } else if (response.data && response.data.error) {
-          audioTranscript.value = "Error: Could not transcribe audio.";
-          console.error("Transcription error:", response.data.error);
-        }
-      } catch (error) {
-        audioTranscript.value = "Error processing audio.";
-        console.error("Audio processing error:", error);
-        // Log detailed error information
-        if (error.response) {
-          console.error("Response data:", error.response.data);
-          console.error("Response status:", error.response.status);
-        }
-      } finally {
-        isLoading.value = false;
-      }
-    };
+      // Use the transcript as a message
+      userMessage.value = response.data.transcription;
+      sendMessage();
+    } else if (response.data && response.data.error) {
+      audioTranscript.value = "Error: Could not transcribe audio.";
+      console.error("Transcription error:", response.data.error);
+    }
+  } catch (error) {
+    audioTranscript.value = "Error processing audio.";
+    console.error("Audio processing error:", error);
+    // Log detailed error information
+    if (error.response) {
+      console.error("Response data:", error.response.data);
+      console.error("Response status:", error.response.status);
+    }
+  } finally {
+    isLoading.value = false;
+  }
+};
     
     const playAudio = async (text) => {
       try {

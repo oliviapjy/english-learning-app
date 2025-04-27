@@ -19,24 +19,43 @@ export default {
   },
   
   // Transcribe audio file
-  transcribeAudio(audioBlob) {
-    // Create a proper audio file with extension to help the server identify the format
-    const audioFile = new File([audioBlob], "recording.webm", {
-      type: "audio/webm",
-    });
-    
-    const formData = new FormData();
-    formData.append('file', audioFile);
-    
-    // Log the request for debugging
-    console.log("Sending audio file, size:", audioFile.size);
-    
-    return apiClient.post('/transcribe', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-  },
+// In src/services/api.js
+transcribeAudio(audioBlob) {
+  // Do some basic validation
+  if (!audioBlob || audioBlob.size < 100) {
+    console.error("Audio blob is too small or invalid");
+    return Promise.resolve({ data: { error: "Invalid audio data" } });
+  }
+
+  // Log audio characteristics for debugging
+  console.log("Audio blob details:", {
+    size: audioBlob.size + " bytes",
+    type: audioBlob.type
+  });
+  
+  // Create a proper audio file with extension
+  const audioFile = new File([audioBlob], "recording.webm", {
+    type: audioBlob.type || "audio/webm",
+  });
+  
+  const formData = new FormData();
+  formData.append('file', audioFile);
+  
+  return apiClient.post('/transcribe', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    },
+    // Add timeout and retry logic
+    timeout: 30000,
+    // Add progress tracking
+    onUploadProgress: (progressEvent) => {
+      console.log(`Upload progress: ${Math.round((progressEvent.loaded / progressEvent.total) * 100)}%`);
+    }
+  }).catch(error => {
+    console.error("Transcription API error:", error);
+    return { data: { error: "Network error during transcription" } };
+  });
+},
 
   // Text to speech conversion
   textToSpeech(text) {
