@@ -11,7 +11,7 @@
       <div class="logo-container">
         <img src="../assets/app_logo.png" alt="App Logo" class="app-logo" />
       </div>
-      <h2>Welcome to TalkEase</h2>
+      <h2>Welcome to BlinkED</h2>
       <p>Improve your English through daily conversations</p>
 
       <div class="button-group">
