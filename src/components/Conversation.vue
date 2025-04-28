@@ -232,91 +232,123 @@ export default {
       }
     };
     
-      // Modify the startRecording function
-      const startRecording = async () => {
-        try {
-          // Request microphone with better constraints
-          const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true
-            } 
-          });
-          
-          // Use higher quality audio settings
-          const options = {
-            mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-              ? 'audio/webm;codecs=opus' 
-              : MediaRecorder.isTypeSupported('audio/mp4') 
-                ? 'audio/mp4'
-                : 'audio/webm',
-            audioBitsPerSecond: 128000 // Higher bitrate for better quality
-          };
-        
-          if (!audioContext.value) {
-  audioContext.value = new (window.AudioContext || window.webkitAudioContext)();
-  analyser.value = audioContext.value.createAnalyser();
-  
-  const source = audioContext.value.createMediaStreamSource(stream);
-  source.connect(analyser.value);
-  
-  // Setup audio level monitoring
-  const dataArray = new Uint8Array(analyser.value.frequencyBinCount);
-  const checkAudioLevel = () => {
-    if (isRecording.value) {
-      analyser.value.getByteFrequencyData(dataArray);
-      
-      // Calculate average volume
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i];
-      }
-      audioLevel.value = sum / dataArray.length;
-      
-      // If audio level is too low, show warning
-      if (audioLevel.value < 10 && isRecording.value) {
-        console.log("Warning: Audio level is very low", audioLevel.value);
-        // Could add UI element to show this warning
-      }
-      
-      requestAnimationFrame(checkAudioLevel);
+    const startRecording = async () => {
+  try {
+    // Request microphone with specific constraints for optimal quality
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: 16000, // 16kHz sample rate (Whisper's preferred rate)
+        channelCount: 1    // mono channel
+      } 
+    });
+    
+    // Define recorder options for optimal Whisper compatibility
+    let options = {};
+    
+    // WebM with Opus is preferable if available
+    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      options = {
+        mimeType: 'audio/webm;codecs=opus',
+        audioBitsPerSecond: 128000
+      };
+    } else if (MediaRecorder.isTypeSupported('audio/wav')) {
+      options = {
+        mimeType: 'audio/wav',
+        audioBitsPerSecond: 256000 
+      };
+    } else {
+      // Fallback
+      options = {
+        audioBitsPerSecond: 128000
+      };
     }
-  };
-  checkAudioLevel();
-}  
-
-          console.log(`Using MIME type: ${options.mimeType}`);
-          mediaRecorder = new MediaRecorder(stream, options);
-          audioChunks = [];
-        
-        // Listen for data available event
-        mediaRecorder.ondataavailable = (event) => {
-          console.log(`Audio chunk size: ${event.data.size}`);
-          if (event.data.size > 0) {
-            audioChunks.push(event.data);
-          }
-        };
-        
-        // Listen for stop event
-        mediaRecorder.onstop = () => {
-          console.log(`Recording stopped. Total chunks: ${audioChunks.length}`);
-          // Process recorded audio
-          processAudio();
+    
+    console.log(`Using audio format: ${options.mimeType || "default"}`);
+    
+    // Set up audio context for monitoring
+    if (!audioContext.value) {
+      audioContext.value = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 16000 // Match Whisper's preferred sample rate
+      });
+      analyser.value = audioContext.value.createAnalyser();
+      
+      const source = audioContext.value.createMediaStreamSource(stream);
+      source.connect(analyser.value);
+      
+      // Monitor audio levels with additional noise floor detection
+      const dataArray = new Uint8Array(analyser.value.frequencyBinCount);
+      let silenceCounter = 0;
+      
+      const checkAudioLevel = () => {
+        if (isRecording.value) {
+          analyser.value.getByteFrequencyData(dataArray);
           
-          // Stop all audio tracks
-          stream.getTracks().forEach(track => track.stop());
-        };
-        
-        // Start recording with smaller time slices
-        mediaRecorder.start(100); // Capture in 100ms chunks
-        isRecording.value = true;
-        audioTranscript.value = '';
-      } catch (err) {
-        console.error("Error accessing microphone:", err);
-        alert("Unable to access microphone. Please check permissions.");
+          // Calculate average volume with better noise filtering
+          let sum = 0;
+          let meaningfulSamples = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            // Count only values above the noise floor
+            if (dataArray[i] > 5) {
+              sum += dataArray[i];
+              meaningfulSamples++;
+            }
+          }
+          
+          // Calculate real audio level ignoring background noise
+          audioLevel.value = meaningfulSamples ? sum / meaningfulSamples : 0;
+          
+          // Track periods of silence
+          if (audioLevel.value < 12) {
+            silenceCounter++;
+            
+            // Visual feedback for silence
+            document.querySelector('.record-btn').classList.add('low-audio');
+            if (silenceCounter > 30) { // About 0.5 seconds of silence
+              document.querySelector('.record-btn').classList.add('very-low-audio');
+            }
+          } else {
+            silenceCounter = 0;
+            document.querySelector('.record-btn').classList.remove('low-audio');
+            document.querySelector('.record-btn').classList.remove('very-low-audio');
+          }
+          
+          requestAnimationFrame(checkAudioLevel);
+        }
+      };
+      checkAudioLevel();
+    }
+    
+    mediaRecorder = new MediaRecorder(stream, options);
+    audioChunks = [];
+    
+    // Gather audio chunks
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunks.push(event.data);
       }
     };
+    
+    // Handle recording stop
+    mediaRecorder.onstop = () => {
+      console.log(`Recording stopped. Total chunks: ${audioChunks.length}`);
+      processAudio();
+      
+      // Stop all audio tracks
+      stream.getTracks().forEach(track => track.stop());
+    };
+    
+    // Start recording with smaller time slices
+    mediaRecorder.start(100);
+    isRecording.value = true;
+    audioTranscript.value = '';
+  } catch (err) {
+    console.error("Error accessing microphone:", err);
+    alert("Unable to access microphone. Please check permissions.");
+  }
+};
 
     const stopRecording = () => {
       if (mediaRecorder && isRecording.value) {
@@ -336,7 +368,7 @@ export default {
   isLoading.value = true;
   
   try {
-    // Create audio blob from chunks - DEFINE THIS FIRST
+    // Create audio blob from chunks
     const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
     
     console.log("Audio blob created:", {
@@ -344,47 +376,44 @@ export default {
       type: audioBlob.type
     });
     
-    if (audioBlob.size < 100) {
-      audioTranscript.value = "Audio too short, please try again.";
+    // Improved check for meaningful audio - 2KB is a better minimum for speech
+    if (audioBlob.size < 2000) {
+      audioTranscript.value = "Audio too short or quiet. Please speak clearly and try again.";
       isLoading.value = false;
       return;
     }
-    
-    // For debugging - create an audio element to test the recording
-    const audioUrl = URL.createObjectURL(audioBlob);
-    console.log("Debug audio URL:", audioUrl);
-    
-    // Optional debug element (only if needed)
-    // const debugAudioEl = document.createElement('audio');
-    // debugAudioEl.controls = true;
-    // debugAudioEl.style.display = 'none'; 
-    // debugAudioEl.src = audioUrl;
-    // document.body.appendChild(debugAudioEl);
-    // console.log("Debug audio element added to DOM");
     
     // Send to backend for transcription
     const response = await apiService.transcribeAudio(audioBlob);
     
     if (response.data && response.data.transcription) {
-      console.log("Transcription received:", response.data.transcription);
-      // Update transcript with actual transcription
-      audioTranscript.value = response.data.transcription;
+      const transcription = response.data.transcription.trim();
+      console.log("Transcription received:", transcription);
       
-      // Use the transcript as a message
-      userMessage.value = response.data.transcription;
+      // More comprehensive filtering for common false positives
+      const suspiciousTranscriptions = ["you", "bye", "hi", "hey", "hey you", "bye you", "you bye"];
+      
+      // Check if the transcription is just one of these suspicious words
+      if (suspiciousTranscriptions.includes(transcription.toLowerCase()) || 
+          transcription.length < 3) {
+        audioTranscript.value = "Could not clearly detect speech. Please speak clearly and try again.";
+        isLoading.value = false;
+        return;
+      }
+      
+      // Update transcript and send the message
+      audioTranscript.value = transcription;
+      userMessage.value = transcription;
       sendMessage();
     } else if (response.data && response.data.error) {
       audioTranscript.value = "Error: Could not transcribe audio.";
       console.error("Transcription error:", response.data.error);
+    } else if (response.data && response.data.warning) {
+      audioTranscript.value = response.data.warning;
     }
   } catch (error) {
     audioTranscript.value = "Error processing audio.";
     console.error("Audio processing error:", error);
-    // Log detailed error information
-    if (error.response) {
-      console.error("Response data:", error.response.data);
-      console.error("Response status:", error.response.status);
-    }
   } finally {
     isLoading.value = false;
   }
@@ -784,6 +813,14 @@ textarea {
 
 .typing-indicator span:nth-child(3) {
   animation-delay: 0.4s;
+}
+
+.record-btn.low-audio {
+  border: 2px solid #f39c12;
+}
+
+.record-btn.very-low-audio {
+  border: 2px solid #e74c3c;
 }
 
 @keyframes bounce {
