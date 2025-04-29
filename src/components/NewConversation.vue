@@ -3,7 +3,7 @@
     <div class="new-conversation-container">
       <div class="sidebar">
         <div class="sidebar-header">
-          <img src="../assets/app_logo.png" alt="App Logo" class="app-logo" />
+          <img src="../assets/app_logo_white.png" alt="App Logo" class="app-logo" />
         </div>
         <h3>TalkEase</h3>
         <div class="user-profile">
