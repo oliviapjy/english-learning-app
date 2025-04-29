@@ -5,7 +5,7 @@
         <div class="sidebar-header">
           <img src="../assets/app_logo_white.png" alt="App Logo" class="app-logo" />
         </div>
-        <h3>TalkEase</h3>
+        <h3>BlinkED</h3>
         <div class="user-profile">
           <span class="username">{{ user.name }}</span>
           <button @click="logout" class="logout-btn">Logout</button>
