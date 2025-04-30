@@ -7,6 +7,7 @@ import Login from '../components/Login.vue';
 import HomeScreen from '../components/HomeScreen.vue';
 import NewConversation from '../components/NewConversation.vue';
 import Conversation from '../components/Conversation.vue';
+import PracticeScreen from '../components/PracticeScreen.vue';
 
 const routes = [
   {
@@ -34,6 +35,12 @@ const routes = [
     path: '/conversation/:id',
     name: 'Conversation',
     component: Conversation,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/practice/:id',
+    name: 'Practice',
+    component: PracticeScreen,
     meta: { requiresAuth: true }
   }
 ];

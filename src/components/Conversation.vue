@@ -13,6 +13,7 @@
           <h4>{{ currentConversation.topic.title }}</h4>
           <span class="level-badge">{{ currentConversation.topic.level }}</span>
           <p class="topic-desc">{{ currentConversation.topic.description }}</p>
+          <button @click="goPractice" class="practice-btn">Practice this topic</button>
         </div>
       </div>
       
