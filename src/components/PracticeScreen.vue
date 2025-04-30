@@ -909,3 +909,338 @@
   }
   
   :deep(.markdown-content code) {
+    background-color: #f0f2f5;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9em;
+  }
+  
+  :deep(.markdown-content pre) {
+    background-color: #f0f2f5;
+    padding: 10px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin-bottom: 1em;
+  }
+  
+  :deep(.markdown-content pre code) {
+    background-color: transparent;
+    padding: 0;
+    font-size: 0.9em;
+    display: block;
+  }
+  
+  :deep(.markdown-content blockquote) {
+    border-left: 4px solid #3498db;
+    padding-left: 10px;
+    color: #7f8c8d;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  
+  .message-actions {
+    margin-top: 8px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  
+  .play-audio-btn {
+    background: transparent;
+    border: none;
+    color: #7f8c8d;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  
+  .play-audio-btn:hover {
+    background-color: rgba(52, 152, 219, 0.1);
+  }
+  
+  .play-audio-btn.audio-playing {
+    color: #3498db;
+    background-color: rgba(52, 152, 219, 0.1);
+  }
+  
+  .play-audio-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .message-time {
+    position: absolute;
+    bottom: -20px;
+    font-size: 11px;
+    color: #95a5a6;
+    right: 5px;
+  }
+  
+  .message.ai .message-time {
+    left: 5px;
+    right: auto;
+  }
+  
+  .loading-indicator {
+    padding: 10px 20px;
+  }
+  
+  .typing-indicator {
+    background-color: white;
+    border-radius: 12px;
+    padding: 12px 15px;
+    display: inline-block;
+    align-self: flex-start;
+    margin-right: auto;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+  
+  .typing-indicator span {
+    display: inline-block;
+    height: 8px;
+    width: 8px;
+    background-color: #95a5a6;
+    border-radius: 50%;
+    margin-right: 5px;
+    animation: pulse 1.5s infinite ease-in-out;
+  }
+  
+  .typing-indicator span:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  
+  .typing-indicator span:nth-child(3) {
+    animation-delay: 0.4s;
+    margin-right: 0;
+  }
+  
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+      opacity: 0.7;
+    }
+    50% {
+      transform: scale(1.2);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 0.7;
+    }
+  }
+  
+  .streaming-response {
+    width: 100%;
+  }
+  
+  .user-input {
+    padding: 15px;
+    background-color: white;
+    border-top: 1px solid #e1e8ed;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Input toggle styling */
+  .input-toggle {
+    display: flex;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #e1e8ed;
+    width: fit-content;
+  }
+  
+  .toggle-btn {
+    background-color: #f5f5f5;
+    border: none;
+    padding: 8px 16px;
+    cursor: pointer;
+    flex: 1;
+  }
+  
+  .toggle-btn.active {
+    background-color: #3498db;
+    color: white;
+  }
+  
+  /* Text input styling */
+  .text-input-container {
+    display: flex;
+    gap: 10px;
+  }
+  
+  textarea {
+    flex-grow: 1;
+    padding: 12px;
+    border: 1px solid #e1e8ed;
+    border-radius: 4px;
+    resize: none;
+    height: 50px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  
+  textarea:focus {
+    outline: none;
+    border-color: #3498db;
+  }
+  
+  .send-btn {
+    padding: 0 15px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .send-btn:hover {
+    background-color: #2980b9;
+  }
+  
+  .send-btn:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+  }
+  
+  /* Audio input styling */
+  .audio-input-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .record-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 15px 30px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    width: 80%;
+    max-width: 300px;
+  }
+  
+  .record-btn:hover {
+    background-color: #2980b9;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  }
+  
+  .record-btn.recording {
+    background-color: #e74c3c;
+    animation: pulse-record 1.5s infinite;
+  }
+  
+  /* Visual feedback for low audio levels */
+  .record-btn.low-audio {
+    background-color: #f39c12;
+  }
+  
+  .record-btn.very-low-audio {
+    background-color: #e67e22;
+  }
+  
+  @keyframes pulse-record {
+    0% {
+      box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(231, 76, 60, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
+    }
+  }
+  
+  .audio-transcript {
+    background-color: #f5f5f5;
+    padding: 10px;
+    border-radius: 4px;
+    color: #2c3e50;
+    width: 100%;
+    margin: 0;
+    text-align: center;
+    font-style: italic;
+    height: 60px;
+    overflow-y: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .recording-warning {
+    color: #e74c3c;
+    font-size: 13px;
+    margin: 0;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .practice-container {
+      flex-direction: column;
+    }
+    
+    .sidebar {
+      width: 100%;
+      height: auto;
+      max-height: 30%;
+      overflow-y: auto;
+    }
+    
+    .message {
+      max-width: 85%;
+    }
+    
+    .topic-info {
+      padding: 10px 15px;
+    }
+    
+    .user-profile {
+      padding: 10px 15px;
+    }
+  }
+  
+  /* Animations for smooth message appearance */
+  .message {
+    animation: fadeSlideIn 0.3s ease forwards;
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  
+  @keyframes fadeSlideIn {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  /* Accessibility enhancements */
+  button:focus, textarea:focus {
+    outline: 2px solid #3498db;
+    outline-offset: 2px;
+  }
+  
+  /* Scrollbar styling */
+  .messages-container::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .messages-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+  
+  .messages-container::-webkit-scrollbar-thumb {
+    background: #bdc3c7;
+    border-radius: 4px;
+  }
+  
+  .messages-container::-webkit-scrollbar-thumb:hover {
+    background: #95a5a6;
+  }
+</style>
