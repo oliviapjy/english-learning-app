@@ -1,4 +1,4 @@
-<!-- src/components/Conversation.vue (Updated with Voice Features) -->
+<!-- src/components/Conversation.vue (Updated with Markdown Support) -->
 <template>
   <div class="conversation-container">
     <div class="sidebar">
@@ -29,7 +29,12 @@
           :key="index" 
           :class="['message', message.sender]"
         >
-          <div class="message-content">{{ message.text }}</div>
+          <!-- Render user messages normally -->
+          <div v-if="message.sender === 'user'" class="message-content">{{ message.text }}</div>
+          
+          <!-- Render AI messages with markdown -->
+          <div v-else class="message-content markdown-content" v-html="renderMarkdown(message.text)"></div>
+          
           <div class="message-actions" v-if="message.sender === 'ai'">
             <button 
               @click="playAudio(message.text)" 
@@ -107,6 +112,8 @@ import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useConversationStore } from '../stores/conversation';
 import apiService from '../services/api'; // Import the API service
+import { marked } from 'marked'; // Import marked library for Markdown parsing
+import DOMPurify from 'dompurify'; // Import DOMPurify for sanitizing HTML
 
 export default {
   name: 'ConversationComponent',
@@ -138,9 +145,23 @@ export default {
     
     // Audio playback tracking
     let currentAudio = null;
+    const isAudioPlaying = ref(false);
 
     // Ref for loading state
     const isLoading = ref(false);
+
+    // Function to render markdown to HTML
+    const renderMarkdown = (text) => {
+      if (!text) return '';
+      
+      // Convert markdown to HTML using marked
+      const rawHtml = marked(text);
+      
+      // Sanitize the HTML to prevent XSS
+      const cleanHtml = DOMPurify.sanitize(rawHtml);
+      
+      return cleanHtml;
+    };
 
     // Check if user is logged in
     onMounted(async () => {
@@ -485,6 +506,7 @@ export default {
         if (currentAudio) {
           currentAudio.pause();
           currentAudio = null;
+          isAudioPlaying.value = false;
         }
         
         if (!text || text.trim() === '') {
@@ -494,9 +516,23 @@ export default {
         
         console.log(`Converting text to speech: ${text.length} characters`);
         isLoading.value = true;
+        isAudioPlaying.value = true;
+        
+        // Strip markdown for better TTS
+        const stripMarkdown = (md) => {
+          return md
+            .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+            .replace(/_(.*?)_/g, '$1')       // Remove italics
+            .replace(/\n\n/g, ' %PAUSE% ')   // Convert paragraph breaks to pauses
+            .replace(/###(.*?)\n/g, '$1 ')   // Remove headers
+            .replace(/\[(.*?)\]\((.*?)\)/g, '$1'); // Remove links
+        };
+        
+        // Clean text for TTS
+        const ttsText = stripMarkdown(text);
         
         // Truncate text if needed (OpenAI has limits)
-        const truncatedText = text.length > 4000 ? text.substring(0, 4000) : text;
+        const truncatedText = ttsText.length > 4000 ? ttsText.substring(0, 4000) : ttsText;
         
         const response = await apiService.textToSpeech(truncatedText);
         
@@ -512,23 +548,28 @@ export default {
           // Set up event listener to clear currentAudio when playback ends
           audio.onended = () => {
             currentAudio = null;
+            isAudioPlaying.value = false;
           };
           
           // Add error handling for audio playback
           audio.onerror = (error) => {
             console.error("Audio playback error:", error);
             currentAudio = null;
+            isAudioPlaying.value = false;
           };
           
           // Begin playback
           audio.play().catch(err => {
             console.error("Audio play failed:", err);
+            isAudioPlaying.value = false;
           });
         } else if (response.data && response.data.error) {
           console.error("TTS error:", response.data.error);
+          isAudioPlaying.value = false;
         }
       } catch (error) {
         console.error("Error playing audio:", error);
+        isAudioPlaying.value = false;
       } finally {
         isLoading.value = false;
       }
@@ -563,6 +604,7 @@ export default {
       goHome,
       logout,
       messagesContainer,
+      renderMarkdown,
       // Audio functionality
       inputType,
       isRecording,
@@ -570,6 +612,7 @@ export default {
       startRecording,
       stopRecording,
       playAudio,
+      isAudioPlaying,
       // Loading state
       isLoading,
       // New recording duration tracking
@@ -718,6 +761,80 @@ h3 {
   box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
+.message-content {
+  line-height: 1.5;
+}
+
+/* Markdown content styling */
+:deep(.markdown-content) {
+  line-height: 1.5;
+}
+
+:deep(.markdown-content h1),
+:deep(.markdown-content h2),
+:deep(.markdown-content h3),
+:deep(.markdown-content h4) {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  font-weight: bold;
+}
+
+:deep(.markdown-content h1) {
+  font-size: 1.5em;
+}
+
+:deep(.markdown-content h2) {
+  font-size: 1.3em;
+}
+
+:deep(.markdown-content h3) {
+  font-size: 1.2em;
+}
+
+:deep(.markdown-content p) {
+  margin-bottom: 1em;
+}
+
+:deep(.markdown-content ul),
+:deep(.markdown-content ol) {
+  margin-left: 1.5em;
+  margin-bottom: 1em;
+}
+
+:deep(.markdown-content li) {
+  margin-bottom: 0.5em;
+}
+
+:deep(.markdown-content strong) {
+  font-weight: bold;
+}
+
+:deep(.markdown-content em) {
+  font-style: italic;
+}
+
+:deep(.markdown-content code) {
+  font-family: monospace;
+  background-color: #f5f5f5;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+:deep(.markdown-content pre) {
+  background-color: #f5f5f5;
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin-bottom: 1em;
+}
+
+:deep(.markdown-content blockquote) {
+  border-left: 4px solid #ddd;
+  padding-left: 1em;
+  color: #555;
+  margin-bottom: 1em;
+}
+
 .message-time {
   font-size: 11px;
   margin-top: 5px;
@@ -742,6 +859,11 @@ h3 {
 
 .play-audio-btn:hover {
   opacity: 1;
+}
+
+.play-audio-btn.audio-playing {
+  animation: pulse 1.5s infinite;
+  color: #3498db;
 }
 
 .user-input {
