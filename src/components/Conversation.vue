@@ -150,18 +150,23 @@ export default {
     // Ref for loading state
     const isLoading = ref(false);
 
-    // Function to render markdown to HTML
     const renderMarkdown = (text) => {
-      if (!text) return '';
-      
-      // Convert markdown to HTML using marked
-      const rawHtml = marked(text);
-      
-      // Sanitize the HTML to prevent XSS
-      const cleanHtml = DOMPurify.sanitize(rawHtml);
-      
-      return cleanHtml;
-    };
+  if (!text) return '';
+  
+  // Convert markdown to HTML using marked
+  // You can configure marked options here to better handle your specific needs
+  const rawHtml = marked(text, {
+    gfm: true,         // GitHub Flavored Markdown
+    breaks: true,      // Add line breaks
+    headerIds: true,   // Generate IDs for headers
+    mangle: false      // Don't escape HTML
+  });
+  
+  // Sanitize the HTML to prevent XSS
+  const cleanHtml = DOMPurify.sanitize(rawHtml);
+  
+  return cleanHtml;
+};
 
     // Check if user is logged in
     onMounted(async () => {
