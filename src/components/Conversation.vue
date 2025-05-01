@@ -204,6 +204,19 @@ export default {
       scrollToBottom();
     });
     
+    const goPractice = () => {
+  if (currentConversation.value && currentConversation.value.id) {
+    console.log(`Navigating to practice with conversation ID: ${currentConversation.value.id}`);
+    router.push({
+      name: 'Practice',
+      params: { id: currentConversation.value.id }
+    });
+  } else {
+    console.error('Cannot navigate to practice: No conversation ID available');
+  }
+};
+
+
     const currentConversation = computed(() => conversationStore.currentConversation);
     
     const messages = computed(() => {
@@ -609,6 +622,7 @@ export default {
       formatTime,
       goHome,
       logout,
+      goPractice, 
       messagesContainer,
       renderMarkdown,
       // Audio functionality
@@ -1020,6 +1034,27 @@ textarea {
 
 .record-btn.very-low-audio {
   border: 2px solid #e74c3c;
+}
+
+.practice-btn {
+  margin-top: 15px;
+  background-color: #27ae60;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  width: 100%;
+}
+
+.practice-btn:hover {
+  background-color: #2ecc71;
+}
+
+.practice-btn:active {
+  background-color: #219653;
 }
 
 @keyframes bounce {
