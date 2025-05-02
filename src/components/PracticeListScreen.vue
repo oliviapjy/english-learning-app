@@ -104,7 +104,7 @@
         }
       });
       
-      const startPractice = async () => {
+const startPractice = async () => {
         if (selectedEnvironmentIndex.value === null) return;
         
         try {
