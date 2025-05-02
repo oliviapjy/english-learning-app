@@ -1,4 +1,4 @@
-// src/services/api.js
+// Updated src/services/api.js
 import axios from 'axios';
 
 // Create axios instance
@@ -11,48 +11,59 @@ const apiClient = axios.create({
 
 export default {
   // Send message to chat API with context
-  sendMessage(message, previousMessages = []) {
+  sendMessage(message, previousMessages = [], environment = 'Everyday Conversations') {
     return apiClient.post('/chat', { 
       text: message,
-      context: previousMessages 
+      context: previousMessages,
+      environment
     });
   },
   
   // Connect to realtime chat API
   connectRealtimeChat(onMessageCallback, onErrorCallback) {
     return {
-      sendMessage(text, context = []) {
-        // Create EventSource for streaming response
-        const eventSource = new EventSource(`http://127.0.0.1:8000/realtime-chat?_=${Date.now()}`);
-        
-        // Handle incoming messages
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            onMessageCallback(data);
-          } catch (error) {
-            console.error('Error parsing SSE data:', error);
-            onErrorCallback(error);
-          }
-        };
-        
-        // Handle errors
-        eventSource.onerror = (error) => {
-          console.error('EventSource error:', error);
-          eventSource.close();
-          onErrorCallback(error);
-        };
-        
-        // Send message data
-        apiClient.post('/realtime-chat', { text, context })
-          .catch(error => {
-            console.error('Error sending message to realtime chat:', error);
+      sendMessage(text, context = [], environment = 'Everyday Conversations') {
+        // Create POST request with data
+        return apiClient.post('/realtime-chat', { 
+          text, 
+          context,
+          environment
+        })
+        .then(response => {
+          // After successful POST, establish the EventSource connection for streaming response
+          const eventSource = new EventSource(`http://127.0.0.1:8000/realtime-chat?_=${Date.now()}`);
+          
+          // Handle incoming messages
+          eventSource.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              onMessageCallback(data);
+              
+              // Close the connection when done
+              if (data.done) {
+                eventSource.close();
+              }
+            } catch (error) {
+              console.error('Error parsing SSE data:', error);
+              onErrorCallback(error);
+              eventSource.close();
+            }
+          };
+          
+          // Handle errors
+          eventSource.onerror = (error) => {
+            console.error('EventSource error:', error);
             eventSource.close();
             onErrorCallback(error);
-          });
-        
-        // Return the EventSource for cleanup
-        return eventSource;
+          };
+          
+          return eventSource;
+        })
+        .catch(error => {
+          console.error('Error sending message to realtime chat:', error);
+          onErrorCallback(error);
+          return null;
+        });
       }
     };
   },

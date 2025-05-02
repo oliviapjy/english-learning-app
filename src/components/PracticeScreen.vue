@@ -186,17 +186,11 @@ export default {
     
     // Setup realtime connection
     const setupRealtimeConnection = () => {
-      realtimeConnection = api.connectRealtimeChat(
-        handleRealtimeMessage,
-        handleRealtimeError
-      );
-      
-      // Store the connection for cleanup
-      if (typeof window !== 'undefined') {
-        window._eventSourceConnections = window._eventSourceConnections || {};
-        window._eventSourceConnections[props.conversationId] = eventSource;
-      }
-    };
+  realtimeConnection = api.connectRealtimeChat(
+    handleRealtimeMessage,
+    handleRealtimeError
+  );
+};
     
     // Handle incoming messages from the realtime API
     const handleRealtimeMessage = (data) => {
@@ -249,43 +243,54 @@ export default {
       isAiTyping.value = false;
     };
     
-    // Send user message
-    const sendMessage = async () => {
-      if (!userInput.value.trim() || isAiTyping.value) return;
-      
-      const messageText = userInput.value.trim();
-      userInput.value = '';
-      
-      // Add user message to the conversation
-      const userMessage = {
-        sender: 'user',
-        text: messageText,
-        timestamp: new Date()
-      };
-      messages.value.push(userMessage);
-      conversationStore.addMessage(props.conversationId, userMessage);
-      
-      // Format messages for API
-      const contextMessages = messages.value.map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.text
-      }));
-      
-      // Send to API
-      eventSource = realtimeConnection.sendMessage(messageText, contextMessages);
-      
-      // Store the event source for cleanup
-      if (typeof window !== 'undefined') {
-        window._eventSourceConnections = window._eventSourceConnections || {};
-        window._eventSourceConnections[props.conversationId] = eventSource;
-      }
-      
-      // Focus on input and scroll to bottom
-      if (textInput.value) {
-        textInput.value.focus();
-      }
-      scrollToBottom();
-    };
+
+const sendMessage = async () => {
+  if (!userInput.value.trim() || isAiTyping.value) return;
+  
+  const messageText = userInput.value.trim();
+  userInput.value = '';
+  
+  // Add user message to the conversation
+  const userMessage = {
+    sender: 'user',
+    text: messageText,
+    timestamp: new Date()
+  };
+  messages.value.push(userMessage);
+  conversationStore.addMessage(props.conversationId, userMessage);
+  
+  // Format messages for API
+  const contextMessages = messages.value.map(msg => ({
+    role: msg.sender === 'user' ? 'user' : 'assistant',
+    content: msg.text
+  }));
+  
+  // Send to API with environment parameter
+  try {
+    isAiTyping.value = true; // Start showing typing indicator immediately
+    
+    eventSource = await realtimeConnection.sendMessage(
+      messageText, 
+      contextMessages,
+      props.environment // Pass the environment prop
+    );
+    
+    // Store the event source for cleanup
+    if (typeof window !== 'undefined' && eventSource) {
+      window._eventSourceConnections = window._eventSourceConnections || {};
+      window._eventSourceConnections[props.conversationId] = eventSource;
+    }
+  } catch (error) {
+    console.error('Failed to send message:', error);
+    isAiTyping.value = false;
+  }
+  
+  // Focus on input and scroll to bottom
+  if (textInput.value) {
+    textInput.value.focus();
+  }
+  scrollToBottom();
+};
     
     // Start audio recording
     const startRecording = async () => {
