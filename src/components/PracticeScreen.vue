@@ -37,10 +37,15 @@
         </button>
       </div>
       
-      <!-- Typing indicator -->
+      <!-- Typing indicator with live streamed content -->
       <div v-if="isTyping" class="message ai-message typing">
         <div class="message-content">
-          <div class="typing-indicator">
+          <div class="message-header">
+            <span class="sender-name">LangBuddy</span>
+            <span class="timestamp">{{ formatTime(new Date()) }}</span>
+          </div>
+          <div class="message-text" v-html="formatMessage(typingContent)"></div>
+          <div class="typing-indicator" v-if="!typingContent">
             <span></span>
             <span></span>
             <span></span>
@@ -110,11 +115,11 @@ export default {
     const isRecording = ref(false);
     const isPlaying = ref(false);
     const playingMessageIndex = ref(-1);
+    const typingContent = ref('');
     let audioContext = null;
     let mediaRecorder = null;
     let audioChunks = [];
-    let eventSourceConnection = null;
-    let typingContent = '';
+    let eventSource = null;
     
     // Computed properties
     const currentTopic = computed(() => {
@@ -139,6 +144,8 @@ export default {
     };
     
     const formatMessage = (text) => {
+      if (!text) return '';
+      
       // Handle markdown formatting
       let formattedText = text
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -179,7 +186,7 @@ export default {
       
       // Set typing state
       isTyping.value = true;
-      typingContent = '';
+      typingContent.value = '';
       
       // Format previous messages for the API
       const formattedMessages = messages.value.map(msg => ({
@@ -188,7 +195,12 @@ export default {
       }));
       
       try {
-        // Use the realtime chat API
+        // Close any existing event source
+        if (eventSource) {
+          eventSource.close();
+        }
+        
+        // Connect to realtime chat API
         const realtimeChat = api.connectRealtimeChat(
           // Message handler
           (data) => {
@@ -200,7 +212,7 @@ export default {
             
             if (data.content) {
               // Append to the typing content
-              typingContent += data.content;
+              typingContent.value += data.content;
               scrollToBottom();
             }
             
@@ -210,7 +222,7 @@ export default {
               // Create the final AI message
               const aiMessage = {
                 sender: 'ai',
-                text: data.full_content || typingContent,
+                text: data.full_content || typingContent.value,
                 timestamp: new Date()
               };
               
@@ -219,6 +231,9 @@ export default {
               
               // Add message to store
               conversationStore.addMessage(props.conversationId, aiMessage);
+              
+              // Reset typing content
+              typingContent.value = '';
               
               // Scroll to bottom
               scrollToBottom();
@@ -233,14 +248,16 @@ export default {
           (error) => {
             console.error('Realtime chat error:', error);
             isTyping.value = false;
+            typingContent.value = '';
           }
         );
         
-        // Send the message
-        eventSourceConnection = realtimeChat.sendMessage(userMessage.text, formattedMessages);
+        // Send the message and get event source for cleanup
+        eventSource = realtimeChat.sendMessage(userMessage.text, formattedMessages);
       } catch (error) {
         console.error('Error sending message:', error);
         isTyping.value = false;
+        typingContent.value = '';
       }
     };
     
@@ -385,13 +402,19 @@ export default {
         mediaRecorder.stop();
       }
       
-      if (eventSourceConnection) {
-        eventSourceConnection.close();
+      // Close any open EventSource connection
+      if (eventSource) {
+        eventSource.close();
       }
     });
     
     // Watch for changes to messages and scroll to bottom
     watch(messages, () => {
+      scrollToBottom();
+    });
+    
+    // Watch for changes to typing content and scroll to bottom
+    watch(typingContent, () => {
       scrollToBottom();
     });
     
@@ -402,6 +425,7 @@ export default {
       isRecording,
       isPlaying,
       playingMessageIndex,
+      typingContent,
       currentTopic,
       conversationArea,
       inputField,

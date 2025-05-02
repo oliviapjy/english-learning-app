@@ -1,4 +1,4 @@
-// src/router/index.js (Updated)
+// src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 
@@ -37,13 +37,15 @@ const routes = [
     path: '/conversation/:id',
     name: 'Conversation',
     component: Conversation,
+    props: true,
     meta: { requiresAuth: true }
   },
   {
     path: '/practice/:id',
     name: 'Practice',
     component: PracticeScreen,
-    meta: { requiresAuth: true }
+    props: true,
+    meta: { requiresAuth: true, realtime: true }
   },
   {
     path: '/profile',
@@ -80,5 +82,26 @@ router.beforeEach((to, from, next) => {
     next();
   }
 });
+
+// Clean up event source connections when leaving realtime pages
+router.afterEach((to, from) => {
+  // Check if we're navigating away from a realtime page
+  if (from.meta.realtime && window._eventSourceConnections) {
+    // Clean up any active event source connections
+    Object.values(window._eventSourceConnections).forEach(connection => {
+      if (connection && typeof connection.close === 'function') {
+        connection.close();
+      }
+    });
+    
+    // Reset connections store
+    window._eventSourceConnections = {};
+  }
+});
+
+// Create a global store for event source connections
+if (typeof window !== 'undefined') {
+  window._eventSourceConnections = window._eventSourceConnections || {};
+}
 
 export default router;
