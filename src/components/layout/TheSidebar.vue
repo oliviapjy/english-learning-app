@@ -3,24 +3,22 @@
     <div class="sidebar">
       <div class="sidebar-header">
         <img src="../../assets/app_logo_white.png" alt="App Logo" class="app-logo" />
-        
       </div>
       <h3>BlinkED</h3>
       <nav class="sidebar-nav">
-        <router-link to="/home" class="nav-item">
+        <router-link to="/home" class="nav-item" :class="{ active: currentRoute === '/home' }">
           <span class="nav-icon">📚</span>
           <span>Conversations</span>
         </router-link>
-        <router-link to="/friends" class="nav-item active">
+        <router-link to="/friends" class="nav-item" :class="{ active: currentRoute === '/friends' }">
           <span class="nav-icon">👥</span>
           <span>Friends</span>
         </router-link>
-        <router-link to="/profile" class="nav-item">
+        <router-link to="/profile" class="nav-item" :class="{ active: currentRoute === '/profile' }">
           <span class="nav-icon">👤</span>
           <span>Profile</span>
         </router-link>
       </nav>
-      
       <div class="user-profile">
         <span class="username">{{ user.name }}</span>
         <button @click="$emit('logout')" class="logout-btn">Logout</button>
@@ -29,6 +27,9 @@
   </template>
   
   <script>
+  import { computed } from 'vue';
+  import { useRoute } from 'vue-router';
+  
   export default {
     name: 'TheSidebar',
     props: {
@@ -37,7 +38,15 @@
         required: true
       }
     },
-    emits: ['logout']
+    emits: ['logout'],
+    setup() {
+      const route = useRoute();
+      const currentRoute = computed(() => route.path);
+      
+      return {
+        currentRoute
+      };
+    }
   };
   </script>
   
@@ -49,7 +58,6 @@
     padding: 0 0 20px;
     display: flex;
     flex-direction: column;
-    height: 100vh;
   }
   
   .sidebar-header {
@@ -61,37 +69,40 @@
   .app-logo {
     max-width: 120px;
     height: auto;
-    margin-bottom: 10px;
   }
   
   h3 {
-    margin: 0;
-    padding: 0 20px;
+    margin: 15px 20px;
   }
   
+  /* Navigation styles */
   .sidebar-nav {
     display: flex;
     flex-direction: column;
-    margin-top: 20px;
+    margin: 20px 0;
   }
   
   .nav-item {
+    display: flex;
+    align-items: center;
     padding: 12px 20px;
     color: #ecf0f1;
     text-decoration: none;
-    border-left: 3px solid transparent;
-    display: flex;
-    align-items: center;
-    transition: all 0.2s;
+    transition: background-color 0.2s;
   }
   
-  .nav-item:hover, .nav-item.active {
+  .nav-item:hover {
     background-color: #34495e;
-    border-left-color: #3498db;
+  }
+  
+  .nav-item.active {
+    background-color: #34495e;
+    border-left: 4px solid #3498db;
   }
   
   .nav-icon {
-    margin-right: 10px;
+    margin-right: 12px;
+    font-size: 18px;
   }
   
   .user-profile {
