@@ -8,7 +8,8 @@ import HomeScreen from '../components/HomeScreen.vue';
 import NewConversation from '../components/NewConversation.vue';
 import Conversation from '../components/Conversation.vue';
 import PracticeScreen from '../components/PracticeScreen.vue';
-import ProfileScreen from '../components/ProfileScreen.vue'; // Import the new ProfileScreen
+import ProfileScreen from '../components/ProfileScreen.vue';
+import FriendsScreen from '../components/FriendsScreen.vue';
 
 const routes = [
   {
@@ -48,6 +49,12 @@ const routes = [
     path: '/profile',
     name: 'Profile',
     component: ProfileScreen,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/friends',
+    name: 'Friends',
+    component: FriendsScreen,
     meta: { requiresAuth: true }
   }
 ];

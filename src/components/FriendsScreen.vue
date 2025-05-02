@@ -41,7 +41,10 @@
         
         <div v-else-if="friends.length === 0" class="empty-state">
           <div class="empty-message">
-            <img src="../assets/friends_empty.svg" alt="No friends yet" class="empty-icon" />
+            <!-- Using a placeholder icon instead of the missing SVG -->
+            <div class="empty-icon-placeholder">
+              👥
+            </div>
             <h3>No Learning Partners Yet</h3>
             <p>Add friends to track each other's progress and build learning streaks together!</p>
             <button @click="showAddFriendModal = true" class="start-btn">
@@ -661,6 +664,24 @@
   
   .modal-body {
     padding: 20px;
+  }
+
+  .empty-icon {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 20px;
+  }
+  
+  .empty-icon-placeholder {
+    font-size: 70px;
+    height: 120px;
+    width: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+    background-color: #f0f7fc;
+    border-radius: 50%;
   }
   
   .search-container {
