@@ -6,75 +6,52 @@
       
       <div class="content-area">
         <div class="header">
-          <h2>Practice Sessions</h2>
+          <h2>Practice Your Language Skills</h2>
         </div>
         
         <div v-if="loading" class="loading-indicator">
-          Loading conversations...
-        </div>
-        
-        <div v-else-if="conversations.length === 0" class="empty-state">
-          <div class="empty-message">
-            <p>You don't have any conversations to practice with yet.</p>
-            <button @click="navigateToHome" class="start-btn">
-              Create your first conversation
-            </button>
-          </div>
+          Loading environments...
         </div>
         
         <div v-else class="practice-section">
           <p class="section-description">
-            Select a conversation to practice your language skills in a simulated conversation environment.
+            Select an environment to practice your language skills in a simulated conversation.
           </p>
           
-          <!-- Environment selection -->
           <div class="environment-selector">
-            <h3>Choose Practice Environment</h3>
-            <div class="environment-options">
-              <div 
-                v-for="env in environments" 
-                :key="env.id"
-                class="environment-option"
-                :class="{ 'active': selectedEnvironment === env.id }"
-                @click="selectEnvironment(env.id)"
+            <div class="selector-label">Choose Environment:</div>
+            <select v-model="selectedEnvironmentIndex" class="environment-dropdown">
+              <option value="" disabled>Select an environment</option>
+              <option 
+                v-for="(topic, index) in availableTopics" 
+                :key="index" 
+                :value="index"
               >
-                <div class="environment-icon">{{ env.icon }}</div>
-                <div class="environment-details">
-                  <h4>{{ env.name }}</h4>
-                  <p>{{ env.description }}</p>
-                </div>
-              </div>
-            </div>
+                {{ topic.title }} ({{ topic.level }})
+              </option>
+            </select>
           </div>
           
-          <div class="conversations-list">
-            <div 
-              v-for="conversation in conversations" 
-              :key="conversation.id" 
-              class="conversation-card"
-              @click="startPractice(conversation)"
-            >
-              <div class="conversation-info">
-                <h3>{{ conversation.topic.title }}</h3>
-                <p class="description">{{ conversation.topic.description }}</p>
-                <div class="conversation-meta">
-                  <span class="level-badge">{{ conversation.topic.level }}</span>
-                  <span class="message-count">{{ conversation.messages.length }} messages</span>
-                </div>
-              </div>
-              <div class="action-indicator">
-                <span class="action-text">Start Practice</span>
-                <span class="arrow">→</span>
-              </div>
-            </div>
+          <div class="environment-description" v-if="selectedTopic">
+            <h3>{{ selectedTopic.title }}</h3>
+            <p>{{ selectedTopic.description }}</p>
+            <span class="level-badge">{{ selectedTopic.level }}</span>
           </div>
+          
+          <button 
+            @click="startPractice" 
+            class="practice-btn"
+            :disabled="selectedEnvironmentIndex === null"
+          >
+            Practice Now
+          </button>
         </div>
       </div>
     </div>
   </template>
   
   <script>
-  import { ref, onMounted } from 'vue';
+  import { ref, computed, onMounted } from 'vue';
   import { useRouter } from 'vue-router';
   import { useAuthStore } from '../stores/auth';
   import { useConversationStore } from '../stores/conversation';
@@ -91,37 +68,14 @@
       const conversationStore = useConversationStore();
       const user = ref({ name: 'User' });
       const loading = ref(true);
-      const conversations = ref([]);
+      const availableTopics = ref([]);
+      const selectedEnvironmentIndex = ref(0);
       
-      // Add environment selection state
-      const environments = ref([
-        {
-          id: 'business',
-          name: 'Business English',
-          icon: '💼',
-          description: 'Practice professional conversations, meetings, and negotiations.'
-        },
-        {
-          id: 'travel',
-          name: 'Travel & Culture',
-          icon: '✈️',
-          description: 'Learn phrases for travel, tourism, and cultural exchanges.'
-        },
-        {
-          id: 'academic',
-          name: 'Academic Discussions',
-          icon: '🎓',
-          description: 'Practice formal debate, presentations, and scholarly discussions.'
-        },
-        {
-          id: 'everyday',
-          name: 'Everyday Conversations',
-          icon: '💬',
-          description: 'Master casual interactions, small talk, and daily scenarios.'
-        }
-      ]);
-      
-      const selectedEnvironment = ref('everyday'); // Default environment
+      // Computed property to get the selected topic details
+      const selectedTopic = computed(() => {
+        if (selectedEnvironmentIndex.value === null) return null;
+        return availableTopics.value[selectedEnvironmentIndex.value];
+      });
       
       onMounted(async () => {
         if (!authStore.isLoggedIn) {
@@ -131,36 +85,38 @@
         
         user.value = authStore.user;
         try {
+          // Get all conversations first (to initialize the store if needed)
           await conversationStore.fetchConversations();
-          conversations.value = conversationStore.conversations;
+          
+          // Get available topics from the store
+          availableTopics.value = conversationStore.getAvailableTopics();
+          
+          // Select the first topic by default
+          if (availableTopics.value.length > 0) {
+            selectedEnvironmentIndex.value = 0;
+          }
         } catch (error) {
-          console.error('Failed to load conversations:', error);
+          console.error('Failed to initialize practice screen:', error);
         } finally {
           loading.value = false;
         }
       });
       
-      const selectEnvironment = (environmentId) => {
-        selectedEnvironment.value = environmentId;
-      };
-      
-      const startPractice = (conversation) => {
-        // Set current conversation with environment context
-        conversationStore.setCurrentConversation({
-          ...conversation,
-          environment: selectedEnvironment.value
-        });
+      const startPractice = async () => {
+        if (selectedEnvironmentIndex.value === null) return;
         
-        // Navigate to practice screen with both IDs
-        router.push({
-          name: 'Practice',
-          params: { id: conversation.id },
-          query: { environment: selectedEnvironment.value }
-        });
-      };
-      
-      const navigateToHome = () => {
-        router.push('/home');
+        try {
+          // Create a new conversation with the selected topic
+          const conversation = await conversationStore.createConversation(selectedEnvironmentIndex.value);
+          
+          // Navigate to practice screen with the conversation ID
+          router.push({
+            name: 'Practice',
+            params: { id: conversation.id }
+          });
+        } catch (error) {
+          console.error('Failed to create practice conversation:', error);
+        }
       };
       
       const logout = () => {
@@ -171,12 +127,10 @@
       return {
         user,
         loading,
-        conversations,
-        environments,
-        selectedEnvironment,
-        selectEnvironment,
+        availableTopics,
+        selectedEnvironmentIndex,
+        selectedTopic,
         startPractice,
-        navigateToHome,
         logout
       };
     }
@@ -195,6 +149,8 @@
     padding: 20px;
     background-color: #f5f5f5;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
   }
   
   .header {
@@ -205,72 +161,10 @@
   }
   
   .section-description {
-    margin-bottom: 20px;
+    margin-bottom: 30px;
     color: #7f8c8d;
     font-size: 16px;
     max-width: 800px;
-  }
-  
-  /* Environment selector styles */
-  .environment-selector {
-    margin-bottom: 30px;
-    background-color: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-  }
-  
-  .environment-selector h3 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    color: #2c3e50;
-  }
-  
-  .environment-options {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 15px;
-  }
-  
-  .environment-option {
-    display: flex;
-    align-items: center;
-    padding: 12px;
-    border-radius: 8px;
-    border: 2px solid #e0e0e0;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  
-  .environment-option:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
-  }
-  
-  .environment-option.active {
-    border-color: #3498db;
-    background-color: #f0f8ff;
-  }
-  
-  .environment-icon {
-    font-size: 24px;
-    margin-right: 15px;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .environment-details h4 {
-    margin: 0 0 5px;
-    font-size: 16px;
-  }
-  
-  .environment-details p {
-    margin: 0;
-    font-size: 12px;
-    color: #7f8c8d;
   }
   
   .loading-indicator {
@@ -279,80 +173,64 @@
     color: #7f8c8d;
   }
   
-  .empty-state {
+  .practice-section {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
-    height: 60vh;
-  }
-  
-  .empty-message {
-    text-align: center;
+    max-width: 800px;
+    margin: 0 auto;
     background-color: white;
     padding: 30px;
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.05);
   }
   
-  .start-btn {
-    background-color: #3498db;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 10px 20px;
-    margin-top: 15px;
-    cursor: pointer;
-    font-weight: 500;
-  }
-  
-  .conversations-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-  }
-  
-  .conversation-card {
-    background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    overflow: hidden;
-    transition: transform 0.2s, box-shadow 0.2s;
-    cursor: pointer;
+  .environment-selector {
+    width: 100%;
+    margin-bottom: 25px;
     display: flex;
     flex-direction: column;
+    gap: 10px;
   }
   
-  .conversation-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-  }
-  
-  .conversation-info {
-    padding: 15px;
-    flex-grow: 1;
-  }
-  
-  .conversation-info h3 {
-    margin: 0 0 5px;
+  .selector-label {
+    font-weight: 500;
     color: #2c3e50;
   }
   
-  .description {
-    margin: 0 0 10px;
-    color: #7f8c8d;
-    font-size: 14px;
-    line-height: 1.4;
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+  .environment-dropdown {
+    width: 100%;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    background-color: white;
+    font-size: 16px;
+    color: #2c3e50;
   }
   
-  .conversation-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 10px;
+  .environment-dropdown:focus {
+    outline: none;
+    border-color: #3498db;
+  }
+  
+  .environment-description {
+    width: 100%;
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #3498db;
+  }
+  
+  .environment-description h3 {
+    margin: 0 0 10px 0;
+    color: #2c3e50;
+  }
+  
+  .environment-description p {
+    margin: 0 0 10px 0;
+    color: #7f8c8d;
+    line-height: 1.5;
   }
   
   .level-badge {
@@ -362,27 +240,30 @@
     border-radius: 20px;
     font-size: 12px;
     font-weight: 500;
+    display: inline-block;
   }
   
-  .message-count {
-    color: #95a5a6;
-    font-size: 12px;
-  }
-  
-  .action-indicator {
-    padding: 15px;
+  .practice-btn {
     background-color: #3498db;
     color: white;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  
-  .action-text {
+    border: none;
+    border-radius: 8px;
+    padding: 14px 30px;
+    font-size: 16px;
     font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    margin-top: 10px;
+    width: 100%;
+    max-width: 300px;
   }
   
-  .arrow {
-    font-size: 18px;
+  .practice-btn:hover {
+    background-color: #2980b9;
+  }
+  
+  .practice-btn:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
   }
   </style>
