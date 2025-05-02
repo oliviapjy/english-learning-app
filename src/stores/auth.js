@@ -31,7 +31,15 @@ export const useAuthStore = defineStore('auth', () => {
             id: '1',
             name: email.split('@')[0], // Use part of the email as name
             email: email,
-            level: 'Beginner'
+            level: 'Beginner',
+            learningGoals: [
+              { text: 'Improve speaking fluency', selected: true },
+              { text: 'Expand vocabulary', selected: true },
+              { text: 'Master grammar rules', selected: false },
+              { text: 'Practice professional conversation', selected: false },
+              { text: 'Prepare for language exam', selected: false }
+            ],
+            practiceReminder: 'never'
           };
           
           user.value = userData;
@@ -56,7 +64,15 @@ export const useAuthStore = defineStore('auth', () => {
             id: Math.floor(Math.random() * 1000).toString(),
             name: userData.name,
             email: userData.email,
-            level: 'Beginner'
+            level: 'Beginner',
+            learningGoals: [
+              { text: 'Improve speaking fluency', selected: true },
+              { text: 'Expand vocabulary', selected: true },
+              { text: 'Master grammar rules', selected: false },
+              { text: 'Practice professional conversation', selected: false },
+              { text: 'Prepare for language exam', selected: false }
+            ],
+            practiceReminder: 'never'
           };
           
           // Here you would typically save to your backend
@@ -66,6 +82,28 @@ export const useAuthStore = defineStore('auth', () => {
           reject(new Error('Invalid user data'));
         }
       }, 800);
+    });
+  };
+  
+  const updateProfile = async (profileData) => {
+    return new Promise((resolve, reject) => {
+      // Simulate API call delay
+      setTimeout(() => {
+        try {
+          // In a real app, this would update the user in your backend
+          // Merge the existing user data with the updated profile data
+          const updatedUser = {
+            ...user.value,
+            ...profileData
+          };
+          
+          user.value = updatedUser;
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          resolve(updatedUser);
+        } catch (error) {
+          reject(new Error('Failed to update profile'));
+        }
+      }, 600);
     });
   };
   
@@ -83,6 +121,7 @@ export const useAuthStore = defineStore('auth', () => {
     isLoggedIn,
     login,
     signup,
+    updateProfile,
     logout
   };
 });

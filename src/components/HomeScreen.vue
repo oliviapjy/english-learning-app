@@ -6,6 +6,16 @@
         <img src="../assets/app_logo_white.png" alt="App Logo" class="app-logo" />
       </div>
       <h3>BlinkED</h3>
+      <nav class="sidebar-nav">
+        <router-link to="/home" class="nav-item active">
+          <span class="nav-icon">📚</span>
+          <span>Conversations</span>
+        </router-link>
+        <router-link to="/profile" class="nav-item">
+          <span class="nav-icon">👤</span>
+          <span>Profile</span>
+        </router-link>
+      </nav>
       <div class="user-profile">
         <span class="username">{{ user.name }}</span>
         <button @click="logout" class="logout-btn">Logout</button>
@@ -180,6 +190,36 @@ h3 {
   margin: 15px 20px;
 }
 
+/* Navigation styles */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  margin: 20px 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  color: #ecf0f1;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+.nav-item:hover {
+  background-color: #34495e;
+}
+
+.nav-item.active {
+  background-color: #34495e;
+  border-left: 4px solid #3498db;
+}
+
+.nav-icon {
+  margin-right: 12px;
+  font-size: 18px;
+}
+
 .user-profile {
   margin-top: auto;
   padding: 15px 20px;
@@ -345,7 +385,6 @@ h3 {
   color: #95a5a6;
 }
 
-/* New styles for action buttons */
 .conversation-actions {
   display: flex;
   padding: 10px;
