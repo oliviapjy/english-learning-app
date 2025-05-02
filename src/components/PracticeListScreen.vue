@@ -36,6 +36,7 @@
             <h3>{{ selectedTopic.title }}</h3>
             <p>{{ selectedTopic.description }}</p>
             <span class="level-badge">{{ selectedTopic.level }}</span>
+            <span class="practice-env" v-if="selectedTopic.environment">{{ selectedTopic.environment }}</span>
           </div>
           
           <button 
@@ -70,6 +71,7 @@
       const loading = ref(true);
       const availableTopics = ref([]);
       const selectedEnvironmentIndex = ref(0);
+      const selectedEnvironment = ref('everyday');
       
       // Computed property to get the selected topic details
       const selectedTopic = computed(() => {
@@ -106,13 +108,17 @@
         if (selectedEnvironmentIndex.value === null) return;
         
         try {
+          // Determine the environment type based on topic or use default
+          selectedEnvironment.value = selectedTopic.value.environment || 'everyday';
+          
           // Create a new conversation with the selected topic
           const conversation = await conversationStore.createConversation(selectedEnvironmentIndex.value);
           
-          // Navigate to practice screen with the conversation ID
+          // Navigate to practice screen with the conversation ID and environment
           router.push({
             name: 'Practice',
-            params: { id: conversation.id }
+            params: { id: conversation.id },
+            query: { environment: selectedEnvironment.value }
           });
         } catch (error) {
           console.error('Failed to create practice conversation:', error);
@@ -236,6 +242,17 @@
   .level-badge {
     background-color: #e8f4fc;
     color: #3498db;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    display: inline-block;
+    margin-right: 8px;
+  }
+  
+  .practice-env {
+    background-color: #f0f8ff;
+    color: #2c3e50;
     padding: 3px 8px;
     border-radius: 20px;
     font-size: 12px;

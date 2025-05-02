@@ -51,7 +51,10 @@ const routes = [
     path: '/practice/:id',
     name: 'Practice',
     component: PracticeScreen,
-    props: true,
+    props: route => ({ 
+      conversationId: route.params.id,
+      environment: route.query.environment || 'everyday'
+    }),
     meta: { requiresAuth: true, realtime: true }
   },
   {

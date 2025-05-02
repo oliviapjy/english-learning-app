@@ -98,7 +98,7 @@ import api from '../services/api';
 export default {
   name: 'PracticeScreen',
   props: {
-    conversationId: {
+    id: {
       type: String,
       required: true
     }
@@ -150,7 +150,7 @@ export default {
     
     // Computed properties
     const currentTopic = computed(() => {
-      const conversation = conversationStore.conversations.find(c => c.id === props.conversationId);
+      const conversation = conversationStore.conversations.find(c => c.id === props.id);
       return conversation ? conversation.topic : { title: 'Practice', level: 'Intermediate' };
     });
     
@@ -160,38 +160,43 @@ export default {
     });
     
     // Methods
-    const loadConversation = () => {
-      const conversation = conversationStore.conversations.find(c => c.id === props.conversationId);
+    const loadConversation = async () => {
+      // Make sure conversations are loaded
+      if (conversationStore.conversations.length === 0) {
+        await conversationStore.fetchConversations();
+      }
+      
+      const conversation = conversationStore.conversations.find(c => c.id === props.id);
       if (conversation) {
         messages.value = [...conversation.messages];
         
-        // Get environment from URL query parameter or conversation object
-        environment.value = route.query.environment || 
-                           (conversation.environment || 'everyday');
+        // Get environment from conversation object or URL query parameter
+        environment.value = conversation.environment || route.query.environment || 'everyday';
         
         // If it's a new practice session, add an initial system message
         if (messages.value.length === 0) {
-          // Add an initial system message based on the environment
+          // Add an initial system message based on the environment and topic
           sendInitialMessage();
         }
       } else {
+        console.error('Conversation not found:', props.id);
         // Handle error or redirect
-        router.push('/home');
+        router.push('/practice-list');
       }
     };
     
     const sendInitialMessage = () => {
-      // Create a message to initialize the conversation with the selected environment
+      // Create a message to initialize the conversation with the selected topic and environment
       const initialMessage = {
         sender: 'user',
-        text: `Let's practice ${environmentData[environment.value].name} scenarios.`,
+        text: `Let's practice ${currentTopic.value.title} in ${environmentData[environment.value].name} scenarios at ${currentTopic.value.level} level.`,
         timestamp: new Date()
       };
       
       // Add message to store
-      conversationStore.addMessage(props.conversationId, initialMessage);
+      conversationStore.addMessage(props.id, initialMessage);
       
-      // Send the initial message
+      // Send the initial message to API
       sendToAPI(initialMessage);
     };
     
@@ -239,7 +244,7 @@ export default {
       userInput.value = '';
       
       // Add message to store
-      conversationStore.addMessage(props.conversationId, userMessage);
+      conversationStore.addMessage(props.id, userMessage);
       
       // Send to API
       sendToAPI(userMessage);
@@ -256,14 +261,16 @@ export default {
         content: msg.text
       }));
       
-      // Add environment context at the beginning of the conversation
-      const environmentContext = {
+      // Add environment and topic context at the beginning of the conversation
+      const contextMessage = {
         role: 'system',
-        content: `This is a ${environmentData[environment.value].name} practice scenario. Focus on language appropriate for ${environmentData[environment.value].description}.`
+        content: `This is a language practice session for ${currentTopic.value.title} at ${currentTopic.value.level} level. 
+        Focus on ${environmentData[environment.value].name} scenarios appropriate for ${environmentData[environment.value].description}.
+        Provide helpful corrections and suggestions for language improvement.`
       };
       
-      // Insert the environment context at the beginning
-      formattedMessages.unshift(environmentContext);
+      // Insert the context at the beginning
+      formattedMessages.unshift(contextMessage);
       
       try {
         // Close any existing event source
@@ -301,7 +308,7 @@ export default {
               messages.value.push(aiMessage);
               
               // Add message to store
-              conversationStore.addMessage(props.conversationId, aiMessage);
+              conversationStore.addMessage(props.id, aiMessage);
               
               // Reset typing content
               typingContent.value = '';
@@ -325,6 +332,11 @@ export default {
         
         // Send the message and get event source for cleanup
         eventSource = realtimeChat.sendMessage(userMessage.text, formattedMessages);
+        
+        // Store the event source for cleanup when navigating away
+        if (typeof window !== 'undefined' && window._eventSourceConnections) {
+          window._eventSourceConnections[props.id] = eventSource;
+        }
       } catch (error) {
         console.error('Error sending message:', error);
         isTyping.value = false;
@@ -457,8 +469,8 @@ export default {
     };
     
     // Lifecycle hooks
-    onMounted(() => {
-      loadConversation();
+    onMounted(async () => {
+      await loadConversation();
       scrollToBottom();
       
       // Focus the input field
@@ -476,6 +488,11 @@ export default {
       // Close any open EventSource connection
       if (eventSource) {
         eventSource.close();
+      }
+      
+      // Remove from global event source connections
+      if (typeof window !== 'undefined' && window._eventSourceConnections && window._eventSourceConnections[props.id]) {
+        delete window._eventSourceConnections[props.id];
       }
     });
     
@@ -495,6 +512,14 @@ export default {
         environment.value = newEnvironment;
       }
     });
+    
+    // Watch for conversation changes
+    watch(() => conversationStore.conversations, (newConversations) => {
+      const conversation = newConversations.find(c => c.id === props.id);
+      if (conversation && conversation.messages) {
+        messages.value = [...conversation.messages];
+      }
+    }, { deep: true });
     
     return {
       messages,
