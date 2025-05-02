@@ -83,14 +83,14 @@
 </template>
 
 <script>
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, watch } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useConversationStore } from '../stores/conversation';
 import api from '../services/api';
 import TheSidebar from './layout/TheSidebar.vue';
 import DOMPurify from 'dompurify';
-import marked from 'marked';
+import { marked } from 'marked';
 
 export default {
   name: 'PracticeScreen',
@@ -136,13 +136,12 @@ export default {
     let eventSource = null;
     
     // Speech API
-    const audioContext = ref(null);
     const audioElement = ref(null);
     
     // Format the AI message with markdown and handle translations
     const formatMessage = (text) => {
       // Security: Sanitize the HTML output
-      const sanitizedHtml = DOMPurify.sanitize(marked(text));
+      const sanitizedHtml = DOMPurify.sanitize(marked.parse(text));
       
       // Format character names in conversation scripts
       const formattedHtml = sanitizedHtml.replace(
