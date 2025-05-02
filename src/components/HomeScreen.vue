@@ -46,11 +46,8 @@
             <p v-else class="no-messages">No messages yet</p>
           </div>
           <div class="conversation-actions">
-            <button @click="openConversation(conversation)" class="action-btn view-btn">
+            <button @click="openConversation(conversation)" class="action-btn view-btn full-width">
               View Conversation
-            </button>
-            <button @click="startPractice(conversation)" class="action-btn practice-btn">
-              Practice Mode
             </button>
           </div>
         </div>
@@ -114,14 +111,6 @@ export default {
       });
     };
     
-    const startPractice = (conversation) => {
-      conversationStore.setCurrentConversation(conversation);
-      router.push({
-        name: 'Practice',
-        params: { id: conversation.id }
-      });
-    };
-    
     const startNewConversation = () => {
       router.push({ name: 'NewConversation' });
     };
@@ -137,7 +126,6 @@ export default {
       conversations,
       formatDate,
       openConversation,
-      startPractice,
       startNewConversation,
       logout
     };
@@ -310,21 +298,16 @@ export default {
   transition: background-color 0.2s;
 }
 
+.full-width {
+  width: 100%;
+}
+
 .view-btn {
-  background-color: #f0f0f0;
-  color: #2c3e50;
-}
-
-.view-btn:hover {
-  background-color: #e0e0e0;
-}
-
-.practice-btn {
   background-color: #3498db;
   color: white;
 }
 
-.practice-btn:hover {
+.view-btn:hover {
   background-color: #2980b9;
 }
 </style>

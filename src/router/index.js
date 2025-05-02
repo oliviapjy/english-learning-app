@@ -8,6 +8,7 @@ import HomeScreen from '../components/HomeScreen.vue';
 import NewConversation from '../components/NewConversation.vue';
 import Conversation from '../components/Conversation.vue';
 import PracticeScreen from '../components/PracticeScreen.vue';
+import PracticeListScreen from '../components/PracticeListScreen.vue';
 import ProfileScreen from '../components/ProfileScreen.vue';
 import FriendsScreen from '../components/FriendsScreen.vue';
 
@@ -38,6 +39,12 @@ const routes = [
     name: 'Conversation',
     component: Conversation,
     props: true,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/practice-list',
+    name: 'PracticeList',
+    component: PracticeListScreen,
     meta: { requiresAuth: true }
   },
   {
