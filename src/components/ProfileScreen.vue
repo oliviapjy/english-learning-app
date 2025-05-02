@@ -11,6 +11,10 @@
           <span class="nav-icon">📚</span>
           <span>Conversations</span>
         </router-link>
+        <router-link to="/friends" class="nav-item">
+          <span class="nav-icon">👥</span>
+          <span>Friends</span>
+        </router-link>
         <router-link to="/profile" class="nav-item active">
           <span class="nav-icon">👤</span>
           <span>Profile</span>

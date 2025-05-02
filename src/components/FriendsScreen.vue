@@ -1,22 +1,33 @@
 <!-- src/components/FriendsScreen.vue -->
 <template>
-    <div class="friends-container">
-      <div class="sidebar">
-        <div class="sidebar-header">
-          <img src="../assets/app_logo_white.png" alt="App Logo" class="app-logo" />
-        </div>
-        <h3>BlinkED</h3>
-        <nav class="nav-menu">
-          <router-link to="/home" class="nav-item">Home</router-link>
-          <router-link to="/friends" class="nav-item active">Friends</router-link>
-          <router-link to="/profile" class="nav-item">Profile</router-link>
-          <router-link to="/opportunities" class="nav-item">Opportunities</router-link>
-        </nav>
-        <div class="user-profile">
-          <span class="username">{{ user.name }}</span>
-          <button @click="logout" class="logout-btn">Logout</button>
-        </div>
+     <div class="sidebar">
+      <div class="sidebar-header">
+        <img src="../assets/app_logo_white.png" alt="App Logo" class="app-logo" />
       </div>
+      <h3>BlinkED</h3>
+      <nav class="sidebar-nav">
+        <router-link to="/home" class="nav-item">
+          <span class="nav-icon">📚</span>
+          <span>Conversations</span>
+        </router-link>
+        <router-link to="/friends" class="nav-item active">
+          <span class="nav-icon">👥</span>
+          <span>Friends</span>
+        </router-link>
+        <router-link to="/profile" class="nav-item">
+          <span class="nav-icon">👤</span>
+          <span>Profile</span>
+        </router-link>
+        <router-link to="/opportunities" class="nav-item">
+          <span class="nav-icon">🎯</span>
+          <span>Opportunities</span>
+        </router-link>
+      </nav>
+      <div class="user-profile">
+        <span class="username">{{ user.name }}</span>
+        <button @click="logout" class="logout-btn">Logout</button>
+      </div>
+    </div>
       
       <div class="content-area">
         <div class="header">
@@ -143,7 +154,6 @@
           </div>
         </div>
       </div>
-    </div>
   </template>
   
   <script>
@@ -666,23 +676,7 @@
     padding: 20px;
   }
 
-  .empty-icon {
-    width: 120px;
-    height: 120px;
-    margin-bottom: 20px;
-  }
   
-  .empty-icon-placeholder {
-    font-size: 70px;
-    height: 120px;
-    width: 120px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 20px;
-    background-color: #f0f7fc;
-    border-radius: 50%;
-  }
   
   .search-container {
     display: flex;
