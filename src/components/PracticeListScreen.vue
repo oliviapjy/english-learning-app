@@ -27,6 +27,26 @@
             Select a conversation to practice your language skills in a simulated conversation environment.
           </p>
           
+          <!-- Environment selection -->
+          <div class="environment-selector">
+            <h3>Choose Practice Environment</h3>
+            <div class="environment-options">
+              <div 
+                v-for="env in environments" 
+                :key="env.id"
+                class="environment-option"
+                :class="{ 'active': selectedEnvironment === env.id }"
+                @click="selectEnvironment(env.id)"
+              >
+                <div class="environment-icon">{{ env.icon }}</div>
+                <div class="environment-details">
+                  <h4>{{ env.name }}</h4>
+                  <p>{{ env.description }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <div class="conversations-list">
             <div 
               v-for="conversation in conversations" 
@@ -73,6 +93,36 @@
       const loading = ref(true);
       const conversations = ref([]);
       
+      // Add environment selection state
+      const environments = ref([
+        {
+          id: 'business',
+          name: 'Business English',
+          icon: '💼',
+          description: 'Practice professional conversations, meetings, and negotiations.'
+        },
+        {
+          id: 'travel',
+          name: 'Travel & Culture',
+          icon: '✈️',
+          description: 'Learn phrases for travel, tourism, and cultural exchanges.'
+        },
+        {
+          id: 'academic',
+          name: 'Academic Discussions',
+          icon: '🎓',
+          description: 'Practice formal debate, presentations, and scholarly discussions.'
+        },
+        {
+          id: 'everyday',
+          name: 'Everyday Conversations',
+          icon: '💬',
+          description: 'Master casual interactions, small talk, and daily scenarios.'
+        }
+      ]);
+      
+      const selectedEnvironment = ref('everyday'); // Default environment
+      
       onMounted(async () => {
         if (!authStore.isLoggedIn) {
           router.push('/login');
@@ -90,11 +140,22 @@
         }
       });
       
+      const selectEnvironment = (environmentId) => {
+        selectedEnvironment.value = environmentId;
+      };
+      
       const startPractice = (conversation) => {
-        conversationStore.setCurrentConversation(conversation);
+        // Set current conversation with environment context
+        conversationStore.setCurrentConversation({
+          ...conversation,
+          environment: selectedEnvironment.value
+        });
+        
+        // Navigate to practice screen with both IDs
         router.push({
           name: 'Practice',
-          params: { id: conversation.id }
+          params: { id: conversation.id },
+          query: { environment: selectedEnvironment.value }
         });
       };
       
@@ -111,6 +172,9 @@
         user,
         loading,
         conversations,
+        environments,
+        selectedEnvironment,
+        selectEnvironment,
         startPractice,
         navigateToHome,
         logout
@@ -145,6 +209,68 @@
     color: #7f8c8d;
     font-size: 16px;
     max-width: 800px;
+  }
+  
+  /* Environment selector styles */
+  .environment-selector {
+    margin-bottom: 30px;
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  }
+  
+  .environment-selector h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #2c3e50;
+  }
+  
+  .environment-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 15px;
+  }
+  
+  .environment-option {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .environment-option:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+  }
+  
+  .environment-option.active {
+    border-color: #3498db;
+    background-color: #f0f8ff;
+  }
+  
+  .environment-icon {
+    font-size: 24px;
+    margin-right: 15px;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .environment-details h4 {
+    margin: 0 0 5px;
+    font-size: 16px;
+  }
+  
+  .environment-details p {
+    margin: 0;
+    font-size: 12px;
+    color: #7f8c8d;
   }
   
   .loading-indicator {

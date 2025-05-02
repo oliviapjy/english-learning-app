@@ -7,6 +7,7 @@
       <div class="topic-info">
         <h2>{{ currentTopic.title }}</h2>
         <span class="level-badge">{{ currentTopic.level }}</span>
+        <span class="environment-badge">{{ environmentLabel }}</span>
       </div>
     </div>
     
@@ -90,7 +91,7 @@
 
 <script>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useConversationStore } from '../stores/conversation';
 import api from '../services/api';
 
@@ -104,6 +105,7 @@ export default {
   },
   setup(props) {
     const router = useRouter();
+    const route = useRoute();
     const conversationStore = useConversationStore();
     const conversationArea = ref(null);
     const inputField = ref(null);
@@ -116,10 +118,35 @@ export default {
     const isPlaying = ref(false);
     const playingMessageIndex = ref(-1);
     const typingContent = ref('');
+    const environment = ref('everyday'); // Default environment
     let audioContext = null;
     let mediaRecorder = null;
     let audioChunks = [];
     let eventSource = null;
+    
+    // Environment data mapping
+    const environmentData = {
+      business: {
+        name: 'Business English',
+        icon: '💼',
+        description: 'Professional conversations and negotiations'
+      },
+      travel: {
+        name: 'Travel & Culture',
+        icon: '✈️',
+        description: 'Tourist phrases and cultural interactions'
+      },
+      academic: {
+        name: 'Academic Discussions',
+        icon: '🎓',
+        description: 'Formal debates and presentations'
+      },
+      everyday: {
+        name: 'Everyday Conversations',
+        icon: '💬',
+        description: 'Casual interactions and daily scenarios'
+      }
+    };
     
     // Computed properties
     const currentTopic = computed(() => {
@@ -127,15 +154,45 @@ export default {
       return conversation ? conversation.topic : { title: 'Practice', level: 'Intermediate' };
     });
     
+    const environmentLabel = computed(() => {
+      const envData = environmentData[environment.value];
+      return envData ? `${envData.icon} ${envData.name}` : '💬 Everyday Conversations';
+    });
+    
     // Methods
     const loadConversation = () => {
       const conversation = conversationStore.conversations.find(c => c.id === props.conversationId);
       if (conversation) {
         messages.value = [...conversation.messages];
+        
+        // Get environment from URL query parameter or conversation object
+        environment.value = route.query.environment || 
+                           (conversation.environment || 'everyday');
+        
+        // If it's a new practice session, add an initial system message
+        if (messages.value.length === 0) {
+          // Add an initial system message based on the environment
+          sendInitialMessage();
+        }
       } else {
         // Handle error or redirect
         router.push('/home');
       }
+    };
+    
+    const sendInitialMessage = () => {
+      // Create a message to initialize the conversation with the selected environment
+      const initialMessage = {
+        sender: 'user',
+        text: `Let's practice ${environmentData[environment.value].name} scenarios.`,
+        timestamp: new Date()
+      };
+      
+      // Add message to store
+      conversationStore.addMessage(props.conversationId, initialMessage);
+      
+      // Send the initial message
+      sendToAPI(initialMessage);
     };
     
     const formatTime = (timestamp) => {
@@ -184,6 +241,11 @@ export default {
       // Add message to store
       conversationStore.addMessage(props.conversationId, userMessage);
       
+      // Send to API
+      sendToAPI(userMessage);
+    };
+    
+    const sendToAPI = async (userMessage) => {
       // Set typing state
       isTyping.value = true;
       typingContent.value = '';
@@ -193,6 +255,15 @@ export default {
         role: msg.sender === 'user' ? 'user' : 'assistant',
         content: msg.text
       }));
+      
+      // Add environment context at the beginning of the conversation
+      const environmentContext = {
+        role: 'system',
+        content: `This is a ${environmentData[environment.value].name} practice scenario. Focus on language appropriate for ${environmentData[environment.value].description}.`
+      };
+      
+      // Insert the environment context at the beginning
+      formattedMessages.unshift(environmentContext);
       
       try {
         // Close any existing event source
@@ -382,7 +453,7 @@ export default {
     };
     
     const goBack = () => {
-      router.push('/home');
+      router.push('/practice-list');
     };
     
     // Lifecycle hooks
@@ -418,6 +489,13 @@ export default {
       scrollToBottom();
     });
     
+    // Watch for route changes to update environment
+    watch(() => route.query.environment, (newEnvironment) => {
+      if (newEnvironment && environmentData[newEnvironment]) {
+        environment.value = newEnvironment;
+      }
+    });
+    
     return {
       messages,
       userInput,
@@ -427,6 +505,7 @@ export default {
       playingMessageIndex,
       typingContent,
       currentTopic,
+      environmentLabel,
       conversationArea,
       inputField,
       formatTime,
@@ -470,21 +549,31 @@ export default {
 .topic-info {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .topic-info h2 {
   margin: 0;
   font-size: 20px;
+  margin-right: 10px;
+}
+
+.level-badge, .environment-badge {
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-right: 10px;
 }
 
 .level-badge {
   background-color: #e8f4fc;
   color: #3498db;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  margin-left: 10px;
+}
+
+.environment-badge {
+  background-color: #f0f8ff;
+  color: #2c3e50;
 }
 
 .conversation-area {
