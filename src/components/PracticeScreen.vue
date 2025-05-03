@@ -86,6 +86,11 @@
               >
                 Send
               </button>
+
+              <div class="streaming-indicator" v-if="streamingActive">
+                <span class="pulse"></span>
+                <span>Voice streaming active</span>
+              </div>              
             </div>
           </div>
         </div>
@@ -143,9 +148,10 @@ export default {
     let audioContext = null;
     
     // WebRTC connection
-    let peerConnection = null;
-    let dataChannel = null;
     let audioElement = null;
+    const webRTCConnection = ref(null);
+    const streamingActive = ref(false);
+    const audioStream = ref(null);
     
     // Computed properties
     const canSend = computed(() => {
@@ -168,6 +174,9 @@ export default {
         
         // Initialize realtime client
         initializeRealtimeClient();
+
+        // Initialize WebRTC connection
+        await initializeWebRTC();
         
         // Set up first message to get objectives and roles
         if (messages.value.length === 0) {
@@ -276,6 +285,71 @@ export default {
         }
       );
     };
+
+    // Initialize WebRTC for audio streaming
+const initializeWebRTC = async () => {
+  try {
+    // Initialize WebRTC connection
+    webRTCConnection.value = await api.initializeWebRTC(
+      props.conversationId,
+      // onConnected callback
+      (channel) => {
+        console.log('WebRTC connection established with channel:', channel.label);
+        connected.value = true;
+      },
+      // onMessage callback
+      (data) => {
+        if (data.type === 'transcription') {
+          // Handle incoming transcription
+          handleWebRTCTranscription(data.text);
+        } else if (data.type === 'audio-track') {
+          // Handle incoming audio track
+          handleIncomingAudioTrack(data.track, data.streams);
+        }
+      },
+      // onDisconnect callback
+      () => {
+        console.log('WebRTC connection closed');
+        streamingActive.value = false;
+        connected.value = false;
+      }
+    );
+  } catch (error) {
+    console.error('Failed to initialize WebRTC:', error);
+  }
+};
+
+// Handle transcription coming from WebRTC
+const handleWebRTCTranscription = (text) => {
+  if (text && text.trim()) {
+    // Add user message to the conversation
+    messages.value.push({
+      id: Date.now(),
+      role: 'user',
+      content: text,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Send to API
+    sendToRealtimeAPI(text);
+  }
+};
+
+// Handle incoming audio track
+const handleIncomingAudioTrack = (track, streams) => {
+  if (streams && streams.length > 0) {
+    // Create or use existing audio element for playback
+    if (!audioElement) {
+      audioElement = new Audio();
+    }
+    
+    // Set the stream as the source
+    audioElement.srcObject = streams[0];
+    
+    // Auto-play the audio
+    audioElement.play().catch(e => console.error('Audio playback error:', e));
+  }
+};
     
     // Send the initial message to get objectives and character info
     const sendInitialMessage = () => {
@@ -448,80 +522,96 @@ export default {
       }
     };
     
-    // Start audio recording
-    const startRecording = async () => {
-      try {
-        // Request microphone access
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        // Create media recorder
-        mediaRecorder.value = new MediaRecorder(stream);
-        audioChunks.value = [];
-        
-        // Set up event handlers
-        mediaRecorder.value.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            audioChunks.value.push(event.data);
-          }
-        };
-        
-        mediaRecorder.value.onstop = async () => {
-          // Create blob from chunks
-          const audioBlob = new Blob(audioChunks.value, { type: 'audio/webm' });
-          
-          // Transcribe audio
-          isProcessing.value = true;
-          
-          try {
-            const result = await api.transcribeAudio(audioBlob);
-            
-            if (result.data.error) {
-              console.error('Transcription error:', result.data.error);
-              return;
-            }
-            
-            if (result.data.warning) {
-              console.warn('Transcription warning:', result.data.warning);
-              return;
-            }
-            
-            const transcription = result.data.transcription;
-            if (transcription && transcription.trim()) {
-              // Set the transcribed text as user input
-              userInput.value = transcription;
-              
-              // Automatically send the message
-              await sendMessage();
-            }
-          } catch (error) {
-            console.error('Error processing audio:', error);
-          } finally {
-            isProcessing.value = false;
-          }
-        };
-        
-        // Start recording
-        mediaRecorder.value.start();
-        isRecording.value = true;
-      } catch (error) {
-        console.error('Error starting recording:', error);
-        throw error;
-      }
-    };
+// Start audio recording
+const startRecording = async () => {
+  try {
+    // Request microphone access
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioStream.value = stream;
     
-    // Stop audio recording
-    const stopRecording = () => {
-      if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
-        mediaRecorder.value.stop();
-        isRecording.value = false;
-        
-        // Stop all tracks in the stream
-        if (mediaRecorder.value.stream) {
-          mediaRecorder.value.stream.getTracks().forEach(track => track.stop());
+    // If we're using WebRTC for streaming
+    if (webRTCConnection.value) {
+      // Stream directly via WebRTC
+      await webRTCConnection.value.addLocalStream(stream);
+      streamingActive.value = true;
+      isRecording.value = true;
+    } else {
+      // Fall back to traditional recording
+      mediaRecorder.value = new MediaRecorder(stream);
+      audioChunks.value = [];
+      
+      // Set up event handlers
+      mediaRecorder.value.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.value.push(event.data);
         }
-      }
-    };
+      };
+      
+      mediaRecorder.value.onstop = async () => {
+        // Create blob from chunks
+        const audioBlob = new Blob(audioChunks.value, { type: 'audio/webm' });
+        
+        // Transcribe audio
+        isProcessing.value = true;
+        
+        try {
+          const result = await api.transcribeAudio(audioBlob);
+          
+          if (result.data.error) {
+            console.error('Transcription error:', result.data.error);
+            return;
+          }
+          
+          const transcription = result.data.transcription;
+          if (transcription && transcription.trim()) {
+            // Set the transcribed text as user input
+            userInput.value = transcription;
+            
+            // Automatically send the message
+            await sendMessage();
+          }
+        } catch (error) {
+          console.error('Error processing audio:', error);
+        } finally {
+          isProcessing.value = false;
+        }
+      };
+      
+      // Start recording
+      mediaRecorder.value.start();
+      isRecording.value = true;
+    }
+  } catch (error) {
+    console.error('Error starting recording:', error);
+    throw error;
+  }
+};
     
+// Stop audio recording
+const stopRecording = () => {
+  isRecording.value = false;
+  
+  // Stop WebRTC streaming
+  if (streamingActive.value && webRTCConnection.value) {
+    streamingActive.value = false;
+    
+    // We don't stop the connection, just the stream
+    if (audioStream.value) {
+      audioStream.value.getTracks().forEach(track => track.stop());
+      audioStream.value = null;
+    }
+  }
+  // Stop traditional recording
+  else if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    mediaRecorder.value.stop();
+    
+    // Stop all tracks in the stream
+    if (mediaRecorder.value.stream) {
+      mediaRecorder.value.stream.getTracks().forEach(track => track.stop());
+    }
+  }
+};
+
     // Save conversation to store
     const saveConversation = () => {
       conversationStore.updateConversation({
@@ -552,37 +642,38 @@ export default {
       }
     };
     
-    // Clean up resources
-    const cleanupResources = () => {
-      // Stop any ongoing recording
-      if (isRecording.value) {
-        stopRecording();
-      }
-      
-      // Stop any audio playback
-      if (audioElement) {
-        audioElement.pause();
-        audioElement = null;
-      }
-      
-      // Close WebRTC connection if exists
-      if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-      }
-      
-      // Clean up data channel
-      if (dataChannel) {
-        dataChannel.close();
-        dataChannel = null;
-      }
-      
-      // Close audio context
-      if (audioContext) {
-        audioContext.close().catch(e => console.error(e));
-        audioContext = null;
-      }
-    };
+
+// Clean up resources
+const cleanupResources = () => {
+  // Stop any ongoing recording
+  if (isRecording.value) {
+    stopRecording();
+  }
+  
+  // Stop any audio playback
+  if (audioElement) {
+    audioElement.pause();
+    audioElement = null;
+  }
+  
+  // Close WebRTC connection if exists
+  if (webRTCConnection.value) {
+    webRTCConnection.value.close();
+    webRTCConnection.value = null;
+  }
+  
+  // Clean up audio stream
+  if (audioStream.value) {
+    audioStream.value.getTracks().forEach(track => track.stop());
+    audioStream.value = null;
+  }
+  
+  // Close audio context
+  if (audioContext) {
+    audioContext.close().catch(e => console.error(e));
+    audioContext = null;
+  }
+};
     
     // Navigate back to practice list
     const goBack = () => {
@@ -606,6 +697,8 @@ export default {
       currentlyPlaying,
       messagesContainer,
       canSend,
+      webRTCConnection,
+      streamingActive,
       objectives,
       userCharacter,
       sendMessage,
@@ -618,6 +711,7 @@ export default {
   }
 };
 </script>
+
 
 <style scoped>
 .practice-container {
@@ -828,6 +922,41 @@ export default {
   50% {
     transform: translateY(-5px);
     opacity: 1;
+  }
+}
+
+.streaming-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  color: #3498db;
+  font-size: 14px;
+}
+
+.pulse {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #3498db;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(52, 152, 219, 0.7);
+  }
+  
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(52, 152, 219, 0);
+  }
+  
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(52, 152, 219, 0);
   }
 }
 
