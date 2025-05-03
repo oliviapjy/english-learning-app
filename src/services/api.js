@@ -335,30 +335,35 @@ export default {
       });
   },
   
-  // Direct audio streaming via WebRTC
-  streamAudioToServer(stream, conversationId, onResponse) {
-    return this.initializeWebRTC(
-      conversationId,
-      // On Connected callback
-      (dataChannel) => {
-        console.log('WebRTC audio channel connected');
-      },
-      // On Message callback
-      (data) => {
-        if (data.type === 'transcription') {
-          onResponse(data.text);
-        } else if (data.type === 'error') {
-          console.error('Audio streaming error:', data.error);
-        }
-      },
-      // On Disconnect callback
-      () => {
-        console.log('WebRTC audio connection closed');
+// Direct audio streaming via WebRTC
+streamAudioToServer(stream, conversationId, onResponse) {
+  return this.initializeWebRTC(
+    conversationId,
+    // On Connected callback
+    (channel) => {
+      console.log('WebRTC audio channel connected');
+      // Inform the server that we're ready to stream
+      channel.send(JSON.stringify({
+        type: 'stream-ready',
+        conversationId
+      }));
+    },
+    // On Message callback
+    (data) => {
+      if (data.type === 'transcription') {
+        onResponse(data.text);
+      } else if (data.type === 'error') {
+        console.error('Audio streaming error:', data.error);
       }
-    ).then(rtcConnection => {
-      // Add the audio stream to the connection
-      rtcConnection.addLocalStream(stream);
-      return rtcConnection;
-    });
-  }
+    },
+    // On Disconnect callback
+    () => {
+      console.log('WebRTC audio connection closed');
+    }
+  ).then(rtcConnection => {
+    // Add the audio stream to the connection
+    rtcConnection.addLocalStream(stream);
+    return rtcConnection;
+  });
+}
 };

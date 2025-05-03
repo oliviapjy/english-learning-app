@@ -101,7 +101,7 @@
 
 <script>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute} from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useConversationStore } from '../stores/conversation';
 import TheSidebar from './layout/TheSidebar.vue';
@@ -125,6 +125,7 @@ export default {
   },
   setup(props) {
     const router = useRouter();
+    const route = useRoute();
     const authStore = useAuthStore();
     const conversationStore = useConversationStore();
     
@@ -144,6 +145,9 @@ export default {
     const objectives = ref('');
     const userCharacter = ref('');
     
+    // Extract environment from route query or use prop default
+    const environmentToUse = ref(route.query.environment || props.environment);
+
     // Audio context for playback
     let audioContext = null;
     
@@ -160,6 +164,7 @@ export default {
     
     // Initialize the practice session
     onMounted(async () => {
+      console.log('Using environment:', environmentToUse.value);
       if (!authStore.isLoggedIn) {
         router.push('/login');
         return;
