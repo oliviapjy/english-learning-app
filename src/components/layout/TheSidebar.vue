@@ -46,7 +46,7 @@
 </template>
 
 <script>
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 export default {
@@ -55,16 +55,34 @@ export default {
     user: {
       type: Object,
       required: true
+    },
+    initialCollapsed: {
+      type: Boolean,
+      default: false
     }
   },
   emits: ['logout', 'collapse-change'],
   setup(props, { emit }) {
     const route = useRoute();
     const currentRoute = computed(() => route.path);
-    const isCollapsed = ref(false);
+    const isCollapsed = ref(props.initialCollapsed);
+    
+    onMounted(() => {
+      // Initialize the sidebar state from localStorage if available
+      const savedState = localStorage.getItem('sidebarCollapsed');
+      if (savedState !== null) {
+        isCollapsed.value = savedState === 'true';
+      }
+    });
+    
+    // Watch for prop changes and update local state
+    watch(() => props.initialCollapsed, (newValue) => {
+      isCollapsed.value = newValue;
+    });
     
     const toggleSidebar = () => {
       isCollapsed.value = !isCollapsed.value;
+      localStorage.setItem('sidebarCollapsed', isCollapsed.value);
       emit('collapse-change', isCollapsed.value);
     };
     
