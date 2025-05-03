@@ -14,6 +14,10 @@
         <span class="nav-icon">🎯</span>
         <span>Practice</span>
       </router-link>
+      <router-link to="/info-board" class="nav-item" :class="{ active: currentRoute === '/info-board' }">
+        <span class="nav-icon">📋</span>
+        <span>Opportunities</span>
+      </router-link>
       <router-link to="/friends" class="nav-item" :class="{ active: currentRoute === '/friends' }">
         <span class="nav-icon">👥</span>
         <span>Friends</span>

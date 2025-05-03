@@ -19,56 +19,56 @@ export default {
     });
   },
   
-// Connect to realtime chat API
-connectRealtimeChat(onMessageCallback, onErrorCallback) {
-  return {
-    sendMessage(text, context = [], environment = 'Everyday Conversations') {
-      console.log(`API Service: Sending realtime message with environment: ${environment}`);
-      
-      // Create POST request with data
-      return apiClient.post('/realtime-chat', { 
-        text, 
-        context,
-        environment
-      })
-      .then(response => {
-        // After successful POST, establish the EventSource connection for streaming response
-        const eventSource = new EventSource(`http://127.0.0.1:8000/realtime-chat?_=${Date.now()}`);
+  // Connect to realtime chat API
+  connectRealtimeChat(onMessageCallback, onErrorCallback) {
+    return {
+      sendMessage(text, context = [], environment = 'Everyday Conversations') {
+        console.log(`API Service: Sending realtime message with environment: ${environment}`);
         
-        // Handle incoming messages
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            onMessageCallback(data);
-            
-            // Close the connection when done
-            if (data.done) {
+        // Create POST request with data
+        return apiClient.post('/realtime-chat', { 
+          text, 
+          context,
+          environment
+        })
+        .then(() => {
+          // After successful POST, establish the EventSource connection for streaming response
+          const eventSource = new EventSource(`http://127.0.0.1:8000/realtime-chat?_=${Date.now()}`);
+          
+          // Handle incoming messages
+          eventSource.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              onMessageCallback(data);
+              
+              // Close the connection when done
+              if (data.done) {
+                eventSource.close();
+              }
+            } catch (error) {
+              console.error('Error parsing SSE data:', error);
+              onErrorCallback(error);
               eventSource.close();
             }
-          } catch (error) {
-            console.error('Error parsing SSE data:', error);
-            onErrorCallback(error);
+          };
+          
+          // Handle errors
+          eventSource.onerror = (error) => {
+            console.error('EventSource error:', error);
             eventSource.close();
-          }
-        };
-        
-        // Handle errors
-        eventSource.onerror = (error) => {
-          console.error('EventSource error:', error);
-          eventSource.close();
+            onErrorCallback(error);
+          };
+          
+          return eventSource;
+        })
+        .catch(error => {
+          console.error('Error sending message to realtime chat:', error);
           onErrorCallback(error);
-        };
-        
-        return eventSource;
-      })
-      .catch(error => {
-        console.error('Error sending message to realtime chat:', error);
-        onErrorCallback(error);
-        return null;
-      });
-    }
-  };
-},
+          return null;
+        });
+      }
+    };
+  },
   
   // Transcribe audio file
   transcribeAudio(audioBlob) {

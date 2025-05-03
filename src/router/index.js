@@ -11,6 +11,7 @@ import PracticeScreen from '../components/PracticeScreen.vue';
 import PracticeListScreen from '../components/PracticeListScreen.vue';
 import ProfileScreen from '../components/ProfileScreen.vue';
 import FriendsScreen from '../components/FriendsScreen.vue';
+import InfoBoardScreen from '../components/InfoBoardScreen.vue'; // Import the new component
 
 const routes = [
   {
@@ -67,6 +68,12 @@ const routes = [
     path: '/friends',
     name: 'Friends',
     component: FriendsScreen,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/info-board',
+    name: 'InfoBoard',
+    component: InfoBoardScreen,
     meta: { requiresAuth: true }
   }
 ];
