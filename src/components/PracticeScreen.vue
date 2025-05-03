@@ -1,80 +1,92 @@
 <!-- src/components/PracticeScreen.vue -->
 <template>
   <div class="practice-container">
-    <!-- Sidebar Component -->
+    <!-- Sidebar -->
     <TheSidebar :user="user" @logout="logout" />
     
     <div class="practice-content">
+      <!-- Header with environment information -->
       <div class="practice-header">
-        <div class="header-left">
-          <button class="back-button" @click="goBack">
-            <i class="fas fa-arrow-left"></i> Back
-          </button>
-          <h2 v-if="currentConversation">{{ currentConversation.topic.title }}</h2>
-        </div>
-        <div class="header-right">
-          <span class="level-badge" v-if="currentConversation">{{ currentConversation.topic.level }}</span>
-          <span class="environment-badge">{{ environment }}</span>
+        <h2>{{ environment }} Practice</h2>
+        <div class="practice-status">
+          <span :class="['connection-status', connected ? 'connected' : 'disconnected']">
+            {{ connected ? 'Connected' : 'Connecting...' }}
+          </span>
+          <button @click="goBack" class="back-button">Exit Practice</button>
         </div>
       </div>
       
-      <div class="practice-chat-container">
-        <div class="chat-messages" ref="messagesContainer">
-          <div
-            v-for="(message, index) in messages"
-            :key="index"
-            :class="['message', message.sender === 'user' ? 'user-message' : 'ai-message']"
-          >
-            <div class="message-content" v-html="formatMessage(message.text)"></div>
-            <div class="message-actions" v-if="message.sender === 'ai'">
-              <button class="action-button play-button" @click="speakMessage(message.text)" title="Listen">
-                <i class="fas fa-volume-up"></i>
-              </button>
-            </div>
-            <div class="message-timestamp">{{ formatTime(message.timestamp) }}</div>
+      <!-- Practice area -->
+      <div class="practice-area">
+        <!-- Objectives panel -->
+        <div class="objectives-panel">
+          <h3>Your Objectives</h3>
+          <div class="objective-content">
+            <p v-if="objectives">{{ objectives }}</p>
+            <p v-else>Loading your objectives...</p>
           </div>
-          <div class="typing-indicator" v-if="isAiTyping">
-            <div class="dot"></div>
-            <div class="dot"></div>
-            <div class="dot"></div>
+          <div class="character-info">
+            <h4>Your Character</h4>
+            <p v-if="userCharacter">{{ userCharacter }}</p>
+            <p v-else>Loading character information...</p>
           </div>
         </div>
         
-        <div class="practice-input-container">
-          <div class="voice-input-container" :class="{ 'recording': isRecording }">
-            <button 
-              class="voice-button" 
-              @mousedown="startRecording" 
-              @mouseup="stopRecording"
-              @touchstart="startRecording"
-              @touchend="stopRecording"
-              @mouseleave="stopRecording"
-              :disabled="isProcessingAudio"
+        <!-- Conversation area -->
+        <div class="conversation-area">
+          <div ref="messagesContainer" class="messages-container">
+            <div 
+              v-for="(message, index) in messages" 
+              :key="index" 
+              :class="['message', message.role]"
             >
-              <i :class="['fas', isRecording ? 'fa-stop' : 'fa-microphone']"></i>
-              {{ isRecording ? 'Release to Send' : 'Hold to Talk' }}
-            </button>
-            <div v-if="isProcessingAudio" class="processing-indicator">
-              Processing audio...
+              <div class="message-content" v-html="formatMessage(message.content)"></div>
+              
+              <!-- Audio playback controls for assistant messages -->
+              <div v-if="message.role === 'assistant' && message.audio" class="audio-controls">
+                <button @click="playAudio(message.audio)" class="play-button">
+                  <span v-if="currentlyPlaying === message.id">◼</span>
+                  <span v-else>▶</span>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Typing indicator when AI is responding -->
+            <div v-if="isTyping" class="message assistant typing">
+              <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
             </div>
           </div>
           
-          <div class="text-input-container">
+          <!-- Input area with voice support -->
+          <div class="input-area">
             <textarea 
               v-model="userInput" 
-              placeholder="Type your message..."
+              placeholder="Type your message or press the microphone to speak..." 
               @keydown.enter.prevent="sendMessage"
-              :disabled="isAiTyping || isProcessingAudio"
-              rows="1"
-              ref="textInput"
+              :disabled="isRecording || isProcessing"
             ></textarea>
-            <button 
-              class="send-button" 
-              @click="sendMessage" 
-              :disabled="!userInput.trim() || isAiTyping || isProcessingAudio"
-            >
-              <i class="fas fa-paper-plane"></i>
-            </button>
+            
+            <div class="input-controls">
+              <button 
+                @click="toggleRecording" 
+                :class="['mic-button', { 'recording': isRecording }]"
+                :disabled="isProcessing"
+              >
+                {{ isRecording ? 'Stop' : 'Mic' }}
+              </button>
+              
+              <button 
+                @click="sendMessage" 
+                class="send-button"
+                :disabled="!canSend || isProcessing"
+              >
+                Send
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -83,13 +95,12 @@
 </template>
 
 <script>
-import { ref, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useConversationStore } from '../stores/conversation';
-import api from '../services/api';
 import TheSidebar from './layout/TheSidebar.vue';
-import DOMPurify from 'dompurify';
+import api from '../services/api';
 import { marked } from 'marked';
 
 export default {
@@ -99,12 +110,12 @@ export default {
   },
   props: {
     conversationId: {
-      type: String,
+      type: [String, Number],
       required: true
     },
     environment: {
       type: String,
-      default: 'everyday'
+      default: 'Everyday Conversations'
     }
   },
   setup(props) {
@@ -112,305 +123,465 @@ export default {
     const authStore = useAuthStore();
     const conversationStore = useConversationStore();
     
-    // User data
-    const user = ref({ name: 'User' });
-    
-    // Conversation data
-    const currentConversation = ref(null);
+    // State variables
+    const user = ref(authStore.user || { name: 'User' });
     const messages = ref([]);
-    
-    // UI state
-    const messagesContainer = ref(null);
-    const textInput = ref(null);
     const userInput = ref('');
-    const isAiTyping = ref(false);
-    
-    // Audio recording state
+    const isTyping = ref(false);
     const isRecording = ref(false);
-    const isProcessingAudio = ref(false);
+    const isProcessing = ref(false);
+    const connected = ref(false);
+    const currentlyPlaying = ref(null);
     const mediaRecorder = ref(null);
     const audioChunks = ref([]);
+    const messagesContainer = ref(null);
+    const realtimeClient = ref(null);
+    const objectives = ref('');
+    const userCharacter = ref('');
     
-    // Realtime connection
-    let realtimeConnection = null;
-    let eventSource = null;
+    // Audio context for playback
+    let audioContext = null;
     
-    // Speech API
-    const audioElement = ref(null);
+    // WebRTC connection
+    let peerConnection = null;
+    let dataChannel = null;
+    let audioElement = null;
     
-    // Format the AI message with markdown and handle translations
-    const formatMessage = (text) => {
-      // Security: Sanitize the HTML output
-      const sanitizedHtml = DOMPurify.sanitize(marked.parse(text));
-      
-      // Format character names in conversation scripts
-      const formattedHtml = sanitizedHtml.replace(
-        /([A-Z]+):/g, 
-        '<strong class="character-name">$1:</strong>'
-      );
-      
-      return formattedHtml;
-    };
+    // Computed properties
+    const canSend = computed(() => {
+      return userInput.value.trim().length > 0 || isRecording.value;
+    });
     
-    // Format timestamp to readable time
-    const formatTime = (timestamp) => {
-      if (!timestamp) return '';
-      const date = new Date(timestamp);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    };
-    
-    // Initialize the conversation
-    const initConversation = async () => {
-      try {
-        // If the conversation exists, load it
-        const conversations = await conversationStore.fetchConversations();
-        currentConversation.value = conversations.find(c => c.id === props.conversationId);
-        
-        if (currentConversation.value) {
-          messages.value = currentConversation.value.messages;
-          
-          // Setup realtime connection
-          setupRealtimeConnection();
-          
-          // Scroll to bottom
-          await nextTick();
-          scrollToBottom();
-        } else {
-          console.error('Conversation not found');
-          router.push('/practice-list');
-        }
-      } catch (error) {
-        console.error('Failed to initialize conversation:', error);
-      }
-    };
-    
-// Setup realtime connection
-const setupRealtimeConnection = () => {
-      realtimeConnection = api.connectRealtimeChat(
-        handleRealtimeMessage,
-        handleRealtimeError
-      );
-      
-      console.log(`Setting up realtime connection with environment: ${props.environment}`);
-    };
-    
-    // Handle incoming messages from the realtime API
-    const handleRealtimeMessage = (data) => {
-      if (data.error) {
-        console.error('Realtime API error:', data.error);
-        isAiTyping.value = false;
+    // Initialize the practice session
+    onMounted(async () => {
+      if (!authStore.isLoggedIn) {
+        router.push('/login');
         return;
       }
       
-      if (data.content && !data.done) {
-        if (!isAiTyping.value) {
-          isAiTyping.value = true;
-          
-          // Create a new message for streaming response
-          messages.value.push({
-            sender: 'ai',
-            text: data.content,
-            timestamp: new Date()
-          });
-        } else {
-          // Append to the last message
-          const lastMessage = messages.value[messages.value.length - 1];
-          if (lastMessage && lastMessage.sender === 'ai') {
-            lastMessage.text += data.content;
-          }
+      try {
+        // Load conversation data
+        await loadConversation();
+        
+        // Initialize audio context
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Initialize realtime client
+        initializeRealtimeClient();
+        
+        // Set up first message to get objectives and roles
+        if (messages.value.length === 0) {
+          sendInitialMessage();
         }
         
-        // Save to store and scroll to bottom
-        conversationStore.addMessage(props.conversationId, messages.value[messages.value.length - 1]);
+        // Scroll to the bottom of messages
+        await nextTick();
         scrollToBottom();
+        
+        // Set up connection status
+        connected.value = true;
+      } catch (error) {
+        console.error('Failed to initialize practice screen:', error);
+        connected.value = false;
+      }
+    });
+    
+    // Clean up resources before unmounting
+    onBeforeUnmount(() => {
+      cleanupResources();
+    });
+    
+    // Watch for new messages to scroll to bottom
+    watch(messages, () => {
+      nextTick(() => {
+        scrollToBottom();
+      });
+    }, { deep: true });
+    
+    // Load conversation data from store
+    const loadConversation = async () => {
+      try {
+        // Try to get existing conversation
+        const conversation = await conversationStore.getConversation(props.conversationId);
+        
+        // If conversation exists, load its messages
+        if (conversation && conversation.messages) {
+          messages.value = conversation.messages;
+          
+          // Extract objectives and character info from assistant messages if available
+          const assistantMessages = conversation.messages.filter(m => m.role === 'assistant');
+          if (assistantMessages.length > 0) {
+            extractObjectivesAndCharacters(assistantMessages[0].content);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading conversation:', error);
+      }
+    };
+    
+    // Initialize the realtime client
+    const initializeRealtimeClient = () => {
+      realtimeClient.value = api.connectRealtimeChat(
+        // Message callback
+        (data) => {
+          if (data.error) {
+            console.error('Realtime chat error:', data.error);
+            isTyping.value = false;
+            return;
+          }
+          
+          // Handle incoming message chunks
+          if (!data.done) {
+            // If this is the first chunk, create a new message
+            if (!isTyping.value) {
+              isTyping.value = true;
+              messages.value.push({
+                id: Date.now(),
+                role: 'assistant',
+                content: data.content || '',
+                timestamp: new Date().toISOString()
+              });
+            } else {
+              // Append content to the current message
+              const lastMessage = messages.value[messages.value.length - 1];
+              lastMessage.content += data.content || '';
+            }
+          } else {
+            // Message is complete
+            isTyping.value = false;
+            
+            // If full content is provided, use it
+            if (data.full_content) {
+              const lastMessage = messages.value[messages.value.length - 1];
+              lastMessage.content = data.full_content;
+              
+              // Extract objectives and character information from first message
+              if (messages.value.length <= 2) {
+                extractObjectivesAndCharacters(data.full_content);
+              }
+              
+              // Convert to speech
+              generateSpeech(lastMessage);
+            }
+            
+            // Save the conversation
+            saveConversation();
+          }
+        },
+        // Error callback
+        (error) => {
+          console.error('Error in realtime chat:', error);
+          isTyping.value = false;
+          isProcessing.value = false;
+        }
+      );
+    };
+    
+    // Send the initial message to get objectives and character info
+    const sendInitialMessage = () => {
+      if (messages.value.length === 0) {
+        const initialMessage = `I'd like to practice ${props.environment}. Please give me an objective to achieve in this conversation and define our characters.`;
+        
+        // Add user message to the conversation
+        messages.value.push({
+          id: Date.now(),
+          role: 'user',
+          content: initialMessage,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Send message to API
+        sendToRealtimeAPI(initialMessage);
+      }
+    };
+    
+    // Extract objectives and character information from assistant message
+    const extractObjectivesAndCharacters = (content) => {
+      // Look for objectives in the message
+      const objectiveMatch = content.match(/objective[s]?:?\s*(.+?)(?=character|your character|my character|[\n\r]|$)/i);
+      if (objectiveMatch && objectiveMatch[1]) {
+        objectives.value = objectiveMatch[1].trim();
+      } else {
+        // Alternative pattern
+        const goalMatch = content.match(/goal[s]?:?\s*(.+?)(?=character|your character|my character|[\n\r]|$)/i);
+        if (goalMatch && goalMatch[1]) {
+          objectives.value = goalMatch[1].trim();
+        }
       }
       
-      if (data.done) {
-        isAiTyping.value = false;
+      // Look for user character info
+      const characterMatch = content.match(/your character:?\s*(.+?)(?=my character|assistant|[\n\r]|$)/i);
+      if (characterMatch && characterMatch[1]) {
+        userCharacter.value = characterMatch[1].trim();
+      }
+      
+      // If we couldn't extract info automatically, use the first paragraph
+      if (!objectives.value && content) {
+        const firstParagraph = content.split('\n\n')[0];
+        objectives.value = firstParagraph.trim();
+      }
+    };
+    
+    // Send a message
+    const sendMessage = async () => {
+      if (!canSend.value || isProcessing.value) return;
+      
+      const messageText = userInput.value.trim();
+      if (!messageText) return;
+      
+      isProcessing.value = true;
+      
+      try {
+        // Add message to conversation
+        messages.value.push({
+          id: Date.now(),
+          role: 'user',
+          content: messageText,
+          timestamp: new Date().toISOString()
+        });
         
-        // If there's a full content provided, update the message
-        if (data.full_content) {
-          const lastMessage = messages.value[messages.value.length - 1];
-          if (lastMessage && lastMessage.sender === 'ai') {
-            lastMessage.text = data.full_content;
-            conversationStore.addMessage(props.conversationId, lastMessage);
+        // Clear input
+        userInput.value = '';
+        
+        // Send to API
+        sendToRealtimeAPI(messageText);
+      } catch (error) {
+        console.error('Error sending message:', error);
+      } finally {
+        isProcessing.value = false;
+      }
+    };
+    
+    // Send message to realtime API
+    const sendToRealtimeAPI = async (text) => {
+      if (realtimeClient.value) {
+        try {
+          // Convert messages to the format expected by the API
+          const context = messages.value.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }));
+          
+          // Send to realtime API with the selected environment
+          const eventSource = await realtimeClient.value.sendMessage(
+            text,
+            context.slice(0, -1), // Exclude the message we just added
+            props.environment
+          );
+          
+          // Store event source for cleanup
+          if (typeof window !== 'undefined' && eventSource) {
+            window._eventSourceConnections = window._eventSourceConnections || {};
+            window._eventSourceConnections[props.conversationId] = eventSource;
           }
+        } catch (error) {
+          console.error('Error sending to realtime API:', error);
         }
       }
     };
     
-    // Handle errors from the realtime API
-    const handleRealtimeError = (error) => {
-      console.error('Realtime connection error:', error);
-      isAiTyping.value = false;
+    // Generate speech from text
+    const generateSpeech = async (message) => {
+      try {
+        const response = await api.textToSpeech(message.content);
+        if (response && response.data && response.data.audio_base64) {
+          // Store audio data with the message
+          message.audio = response.data.audio_base64;
+        }
+      } catch (error) {
+        console.error('Error generating speech:', error);
+      }
     };
     
-
-const sendMessage = async () => {
-  if (!userInput.value.trim() || isAiTyping.value) return;
-  
-  const messageText = userInput.value.trim();
-  userInput.value = '';
-  
-  // Add user message to the conversation
-  const userMessage = {
-    sender: 'user',
-    text: messageText,
-    timestamp: new Date()
-  };
-  messages.value.push(userMessage);
-  conversationStore.addMessage(props.conversationId, userMessage);
-  
-  // Format messages for API
-  const contextMessages = messages.value.map(msg => ({
-    role: msg.sender === 'user' ? 'user' : 'assistant',
-    content: msg.text
-  }));
-  
-  // Send to API with environment parameter
-  try {
-    isAiTyping.value = true; // Start showing typing indicator immediately
+    // Play audio for a message
+    const playAudio = (audioBase64) => {
+      if (!audioBase64 || currentlyPlaying.value === audioBase64) {
+        // Stop playback if already playing
+        if (audioElement) {
+          audioElement.pause();
+          audioElement.currentTime = 0;
+          currentlyPlaying.value = null;
+        }
+        return;
+      }
+      
+      try {
+        // Stop any currently playing audio
+        if (audioElement) {
+          audioElement.pause();
+          audioElement.currentTime = 0;
+        }
+        
+        // Create audio element if needed
+        if (!audioElement) {
+          audioElement = new Audio();
+        }
+        
+        // Set up audio element
+        audioElement.src = `data:audio/mp3;base64,${audioBase64}`;
+        audioElement.onended = () => {
+          currentlyPlaying.value = null;
+        };
+        
+        // Play audio
+        audioElement.play();
+        currentlyPlaying.value = audioBase64;
+      } catch (error) {
+        console.error('Error playing audio:', error);
+        currentlyPlaying.value = null;
+      }
+    };
     
-    eventSource = await realtimeConnection.sendMessage(
-      messageText, 
-      contextMessages,
-      props.environment // Pass the environment prop
-    );
-    
-    // Store the event source for cleanup
-    if (typeof window !== 'undefined' && eventSource) {
-      window._eventSourceConnections = window._eventSourceConnections || {};
-      window._eventSourceConnections[props.conversationId] = eventSource;
-    }
-  } catch (error) {
-    console.error('Failed to send message:', error);
-    isAiTyping.value = false;
-  }
-  
-  // Focus on input and scroll to bottom
-  if (textInput.value) {
-    textInput.value.focus();
-  }
-  scrollToBottom();
-};
+    // Toggle audio recording
+    const toggleRecording = async () => {
+      try {
+        if (isRecording.value) {
+          // Stop recording
+          stopRecording();
+        } else {
+          // Start recording
+          await startRecording();
+        }
+      } catch (error) {
+        console.error('Error toggling recording:', error);
+        isRecording.value = false;
+      }
+    };
     
     // Start audio recording
     const startRecording = async () => {
       try {
-        isRecording.value = true;
-        audioChunks.value = [];
-        
         // Request microphone access
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
         // Create media recorder
         mediaRecorder.value = new MediaRecorder(stream);
+        audioChunks.value = [];
         
-        // Collect audio chunks
-        mediaRecorder.value.addEventListener('dataavailable', (event) => {
+        // Set up event handlers
+        mediaRecorder.value.ondataavailable = (event) => {
           if (event.data.size > 0) {
             audioChunks.value.push(event.data);
           }
-        });
+        };
+        
+        mediaRecorder.value.onstop = async () => {
+          // Create blob from chunks
+          const audioBlob = new Blob(audioChunks.value, { type: 'audio/webm' });
+          
+          // Transcribe audio
+          isProcessing.value = true;
+          
+          try {
+            const result = await api.transcribeAudio(audioBlob);
+            
+            if (result.data.error) {
+              console.error('Transcription error:', result.data.error);
+              return;
+            }
+            
+            if (result.data.warning) {
+              console.warn('Transcription warning:', result.data.warning);
+              return;
+            }
+            
+            const transcription = result.data.transcription;
+            if (transcription && transcription.trim()) {
+              // Set the transcribed text as user input
+              userInput.value = transcription;
+              
+              // Automatically send the message
+              await sendMessage();
+            }
+          } catch (error) {
+            console.error('Error processing audio:', error);
+          } finally {
+            isProcessing.value = false;
+          }
+        };
         
         // Start recording
         mediaRecorder.value.start();
+        isRecording.value = true;
       } catch (error) {
-        console.error('Failed to start recording:', error);
+        console.error('Error starting recording:', error);
+        throw error;
+      }
+    };
+    
+    // Stop audio recording
+    const stopRecording = () => {
+      if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+        mediaRecorder.value.stop();
         isRecording.value = false;
-        alert('Microphone access is required for voice input. Please check your browser settings.');
+        
+        // Stop all tracks in the stream
+        if (mediaRecorder.value.stream) {
+          mediaRecorder.value.stream.getTracks().forEach(track => track.stop());
+        }
       }
     };
     
-    // Stop audio recording and process audio
-    const stopRecording = async () => {
-      if (!isRecording.value || !mediaRecorder.value) return;
-      
-      isRecording.value = false;
-      isProcessingAudio.value = true;
-      
-      // Stop recording
-      mediaRecorder.value.stop();
-      
-      // Process audio when recording stops
-      mediaRecorder.value.addEventListener('stop', async () => {
-        try {
-          // Create audio blob
-          const audioBlob = new Blob(audioChunks.value, { type: 'audio/webm' });
-          
-          if (audioBlob.size > 100) {
-            // Send audio to API for transcription
-            const response = await api.transcribeAudio(audioBlob);
-            
-            if (response?.data?.transcription) {
-              // Set transcribed text as user input and send
-              userInput.value = response.data.transcription;
-              await nextTick();
-              sendMessage();
-            } else if (response?.data?.warning) {
-              console.warn('Transcription warning:', response.data.warning);
-            } else if (response?.data?.error) {
-              console.error('Transcription error:', response.data.error);
-            }
-          } else {
-            console.warn('Audio too short or quiet');
-          }
-        } catch (error) {
-          console.error('Failed to process audio:', error);
-        } finally {
-          // Stop all tracks to release microphone
-          if (mediaRecorder.value && mediaRecorder.value.stream) {
-            mediaRecorder.value.stream.getTracks().forEach(track => track.stop());
-          }
-          isProcessingAudio.value = false;
-        }
+    // Save conversation to store
+    const saveConversation = () => {
+      conversationStore.updateConversation({
+        id: props.conversationId,
+        messages: messages.value,
+        environment: props.environment,
+        updatedAt: new Date().toISOString()
       });
     };
     
-    // Text to speech for AI messages
-    const speakMessage = async (text) => {
+    // Format message content with markdown
+    const formatMessage = (content) => {
+      if (!content) return '';
+      
+      // Process markdown content
       try {
-        // Extract the English part (before any translations in parentheses)
-        let textToSpeak = text;
-        const parenMatch = text.match(/^(.*?)(\(.*?\))/) || text.match(/^([^(]+)/);
-        
-        if (parenMatch) {
-          textToSpeak = parenMatch[1].trim();
-        }
-        
-        // Remove markdown and character names from text
-        textToSpeak = textToSpeak.replace(/\*\*(.*?)\*\*/g, '$1'); // Remove bold
-        textToSpeak = textToSpeak.replace(/_(.*?)_/g, '$1'); // Remove italics
-        textToSpeak = textToSpeak.replace(/[A-Z]+:\s*/g, ''); // Remove character names
-        
-        // Call TTS API
-        const response = await api.textToSpeech(textToSpeak);
-        
-        if (response.data && response.data.audio_base64) {
-          // Create audio source
-          const audioSrc = `data:audio/mp3;base64,${response.data.audio_base64}`;
-          
-          // Create or reuse audio element
-          if (!audioElement.value) {
-            audioElement.value = new Audio();
-          }
-          
-          // Set source and play
-          audioElement.value.src = audioSrc;
-          audioElement.value.play();
-        }
+        return marked(content);
       } catch (error) {
-        console.error('Failed to play speech:', error);
+        console.error('Error formatting message:', error);
+        return content;
       }
     };
     
-    // Scroll chat to bottom
+    // Scroll to bottom of messages container
     const scrollToBottom = () => {
-      nextTick(() => {
-        if (messagesContainer.value) {
-          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-        }
-      });
+      if (messagesContainer.value) {
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+      }
+    };
+    
+    // Clean up resources
+    const cleanupResources = () => {
+      // Stop any ongoing recording
+      if (isRecording.value) {
+        stopRecording();
+      }
+      
+      // Stop any audio playback
+      if (audioElement) {
+        audioElement.pause();
+        audioElement = null;
+      }
+      
+      // Close WebRTC connection if exists
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      
+      // Clean up data channel
+      if (dataChannel) {
+        dataChannel.close();
+        dataChannel = null;
+      }
+      
+      // Close audio context
+      if (audioContext) {
+        audioContext.close().catch(e => console.error(e));
+        audioContext = null;
+      }
     };
     
     // Navigate back to practice list
@@ -418,76 +589,29 @@ const sendMessage = async () => {
       router.push('/practice-list');
     };
     
-    // Logout
+    // User logout
     const logout = () => {
       authStore.logout();
       router.push('/login');
     };
     
-    // Cleanup resources on component unmount
-    onBeforeUnmount(() => {
-      // Close event source
-      if (eventSource && typeof eventSource.close === 'function') {
-        eventSource.close();
-      }
-      
-      // Stop audio recording if active
-      if (mediaRecorder.value && mediaRecorder.value.state === 'recording') {
-        mediaRecorder.value.stop();
-        
-        if (mediaRecorder.value.stream) {
-          mediaRecorder.value.stream.getTracks().forEach(track => track.stop());
-        }
-      }
-      
-      // Stop audio playback
-      if (audioElement.value) {
-        audioElement.value.pause();
-        audioElement.value.src = '';
-      }
-    });
-    
-    // Initialize on component mount
-    onMounted(async () => {
-      // Check authentication
-      if (!authStore.isLoggedIn) {
-        router.push('/login');
-        return;
-      }
-      
-      // Set user data
-      user.value = authStore.user;
-      
-      // Initialize conversation
-      await initConversation();
-      
-      // Auto-focus text input
-      if (textInput.value) {
-        textInput.value.focus();
-      }
-    });
-    
-    // Watch for changes in messages and scroll to bottom
-    watch(messages, () => {
-      scrollToBottom();
-    }, { deep: true });
-    
     return {
       user,
-      currentConversation,
       messages,
-      messagesContainer,
-      textInput,
       userInput,
-      isAiTyping,
+      isTyping,
       isRecording,
-      isProcessingAudio,
-      formatMessage,
-      formatTime,
+      isProcessing,
+      connected,
+      currentlyPlaying,
+      messagesContainer,
+      canSend,
+      objectives,
+      userCharacter,
       sendMessage,
-      startRecording,
-      stopRecording,
-      speakMessage,
+      toggleRecording,
+      formatMessage,
+      playAudio,
       goBack,
       logout
     };
@@ -499,84 +623,117 @@ const sendMessage = async () => {
 .practice-container {
   display: flex;
   height: 100vh;
-  width: 100%;
   overflow: hidden;
 }
 
 .practice-content {
-  flex: 1;
+  flex-grow: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  background-color: #f5f7fa;
+  background-color: #f5f5f5;
 }
 
 .practice-header {
+  padding: 15px 20px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e0e0e0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
-  background-color: white;
-  border-bottom: 1px solid #e0e0e0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
-.header-left {
+.practice-status {
   display: flex;
   align-items: center;
   gap: 15px;
 }
 
-.back-button {
-  background: transparent;
-  border: none;
-  color: #3498db;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
+.connection-status {
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.connection-status.connected {
+  background-color: #e3f9e5;
+  color: #2ecc71;
+}
+
+.connection-status.disconnected {
+  background-color: #fdf2f2;
+  color: #e74c3c;
+}
+
+.back-button {
+  padding: 8px 15px;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .back-button:hover {
-  color: #2980b9;
+  background-color: #e9ecef;
 }
 
-.header-right {
+.practice-area {
   display: flex;
-  gap: 10px;
+  flex-grow: 1;
+  overflow: hidden;
 }
 
-.level-badge {
-  background-color: #e8f4fc;
-  color: #3498db;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.environment-badge {
-  background-color: #f0f8ff;
-  color: #2c3e50;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-  text-transform: capitalize;
-}
-
-.practice-chat-container {
-  flex: 1;
+.objectives-panel {
+  width: 280px;
+  padding: 15px;
+  background-color: #ffffff;
+  border-right: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
-  height: calc(100% - 60px);
 }
 
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
+.objectives-panel h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #2c3e50;
+}
+
+.objective-content {
+  background-color: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  flex-shrink: 0;
+}
+
+.character-info {
+  background-color: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: auto;
+}
+
+.character-info h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  color: #2c3e50;
+}
+
+.conversation-area {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.messages-container {
+  flex-grow: 1;
   padding: 20px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 15px;
@@ -584,118 +741,97 @@ const sendMessage = async () => {
 
 .message {
   max-width: 80%;
-  padding: 10px 15px;
+  padding: 12px 15px;
   border-radius: 12px;
   position: relative;
-  overflow-wrap: break-word;
-  word-break: break-word;
 }
 
-.user-message {
+.message.user {
+  align-self: flex-end;
   background-color: #3498db;
   color: white;
-  align-self: flex-end;
   border-bottom-right-radius: 4px;
 }
 
-.ai-message {
-  background-color: white;
-  color: #2c3e50;
+.message.assistant {
   align-self: flex-start;
+  background-color: white;
+  border: 1px solid #e0e0e0;
   border-bottom-left-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  color: #2c3e50;
+}
+
+.message.typing {
+  padding: 10px;
 }
 
 .message-content {
-  line-height: 1.5;
   font-size: 15px;
+  line-height: 1.5;
 }
 
-.message-content :deep(.character-name) {
-  color: #3498db;
-  font-weight: 600;
-  display: block;
+.message-content :deep(p) {
+  margin: 0 0 10px 0;
+}
+
+.message-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.audio-controls {
   margin-top: 8px;
-}
-
-.user-message .message-content :deep(strong) {
-  color: #ffffff;
-}
-
-.message-actions {
   display: flex;
-  gap: 5px;
-  margin-top: 5px;
   justify-content: flex-end;
 }
 
-.action-button {
-  background: transparent;
-  border: none;
-  color: #7f8c8d;
+.play-button {
+  padding: 5px 10px;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-  padding: 2px 5px;
-  border-radius: 3px;
+  transition: background-color 0.2s;
 }
 
-.action-button:hover {
-  color: #3498db;
-  background-color: #f0f8ff;
-}
-
-.message-timestamp {
-  font-size: 10px;
-  color: #95a5a6;
-  margin-top: 5px;
-  text-align: right;
-}
-
-.user-message .message-timestamp {
-  color: #e3f2fd;
+.play-button:hover {
+  background-color: #e9ecef;
 }
 
 .typing-indicator {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 10px 15px;
-  background-color: white;
-  border-radius: 12px;
-  align-self: flex-start;
-  margin-bottom: 10px;
 }
 
-.typing-indicator .dot {
-  width: 8px;
-  height: 8px;
-  background-color: #3498db;
+.typing-indicator span {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  background-color: #e0e0e0;
   border-radius: 50%;
-  animation: bounce 1.5s infinite ease-in-out;
+  animation: typing-animation 1.5s infinite ease;
 }
 
-.typing-indicator .dot:nth-child(1) {
-  animation-delay: 0s;
-}
-
-.typing-indicator .dot:nth-child(2) {
+.typing-indicator span:nth-child(2) {
   animation-delay: 0.2s;
 }
 
-.typing-indicator .dot:nth-child(3) {
+.typing-indicator span:nth-child(3) {
   animation-delay: 0.4s;
 }
 
-@keyframes bounce {
-  0%, 80%, 100% {
+@keyframes typing-animation {
+  0%, 100% {
     transform: translateY(0);
+    opacity: 0.5;
   }
-  40% {
-    transform: translateY(-8px);
+  50% {
+    transform: translateY(-5px);
+    opacity: 1;
   }
 }
 
-.practice-input-container {
+.input-area {
   padding: 15px;
   background-color: white;
   border-top: 1px solid #e0e0e0;
@@ -704,132 +840,64 @@ const sendMessage = async () => {
   gap: 10px;
 }
 
-.voice-input-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-}
-
-.voice-button {
-  padding: 12px 20px;
-  background-color: #3498db;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: background-color 0.2s, transform 0.1s;
+textarea {
   width: 100%;
-  justify-content: center;
-}
-
-.voice-button:disabled {
-  background-color: #95a5a6;
-  cursor: not-allowed;
-}
-
-.recording .voice-button {
-  background-color: #e74c3c;
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(231, 76, 60, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);
-  }
-}
-
-.processing-indicator {
-  font-size: 12px;
-  color: #7f8c8d;
-  text-align: center;
-  margin-top: 5px;
-}
-
-.text-input-container {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-}
-
-.text-input-container textarea {
-  flex: 1;
-  padding: 12px 15px;
+  height: 60px;
+  padding: 12px;
   border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  font-size: 15px;
+  border-radius: 6px;
   resize: none;
-  max-height: 100px;
-  min-height: 45px;
-  line-height: 1.4;
-  transition: height 0.2s;
+  font-size: 15px;
+  transition: border-color 0.2s;
 }
 
-.text-input-container textarea:focus {
+textarea:focus {
   outline: none;
   border-color: #3498db;
 }
 
-.text-input-container textarea:disabled {
-  background-color: #f5f5f5;
-  cursor: not-allowed;
+.input-controls {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.mic-button {
+  padding: 10px 15px;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.mic-button.recording {
+  background-color: #fdf2f2;
+  color: #e74c3c;
+  border-color: #e74c3c;
+}
+
+.mic-button:hover:not(:disabled) {
+  background-color: #e9ecef;
 }
 
 .send-button {
-  padding: 12px 15px;
+  padding: 10px 20px;
   background-color: #3498db;
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s;
-  height: 45px;
-  width: 45px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.send-button:hover {
+.send-button:hover:not(:disabled) {
   background-color: #2980b9;
 }
 
-.send-button:disabled {
-  background-color: #95a5a6;
+.send-button:disabled,
+.mic-button:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* For mobile responsiveness */
-@media (max-width: 768px) {
-  .message {
-    max-width: 90%;
-  }
-  
-  .practice-header h2 {
-    font-size: 18px;
-  }
-  
-  .practice-input-container {
-    padding: 10px;
-  }
-  
-  .voice-button {
-    padding: 10px 15px;
-  }
-  
-  .text-input-container textarea {
-    padding: 10px;
-  }
 }
 </style>
