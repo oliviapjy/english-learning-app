@@ -292,8 +292,14 @@ export default {
     };
 
     // Initialize WebRTC for audio streaming
-const initializeWebRTC = async () => {
+    const initializeWebRTC = async () => {
   try {
+    // Close any existing connection first
+    if (webRTCConnection.value) {
+      webRTCConnection.value.close();
+      webRTCConnection.value = null;
+    }
+    
     // Initialize WebRTC connection
     webRTCConnection.value = await api.initializeWebRTC(
       props.conversationId,
@@ -319,8 +325,19 @@ const initializeWebRTC = async () => {
         connected.value = false;
       }
     );
+    
+    // Set up error handler
+    window.addEventListener('webrtc-error', (event) => {
+      console.error('WebRTC error event:', event.detail);
+      if (streamingActive.value) {
+        stopRecording(); // Stop recording if an error occurs during streaming
+      }
+    });
+    
+    return true;
   } catch (error) {
     console.error('Failed to initialize WebRTC:', error);
+    return false;
   }
 };
 
@@ -338,6 +355,20 @@ const handleWebRTCTranscription = (text) => {
     // Send to API
     sendToRealtimeAPI(text);
   }
+};
+
+const reconnectWebRTC = async () => {
+  if (webRTCConnection.value) {
+    webRTCConnection.value.close();
+  }
+  
+  connected.value = false;
+  streamingActive.value = false;
+  
+  // Short delay before reconnecting
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  return initializeWebRTC();
 };
 
 // Handle incoming audio track
@@ -536,10 +567,20 @@ const startRecording = async () => {
     
     // If we're using WebRTC for streaming
     if (webRTCConnection.value) {
+      // Make sure connection is initialized
+      if (!connected.value) {
+        await initializeWebRTC();
+      }
+      
       // Stream directly via WebRTC
-      await webRTCConnection.value.addLocalStream(stream);
-      streamingActive.value = true;
-      isRecording.value = true;
+      const success = await webRTCConnection.value.addLocalStream(stream);
+      
+      if (success) {
+        streamingActive.value = true;
+        isRecording.value = true;
+      } else {
+        throw new Error('Failed to add stream to WebRTC connection');
+      }
     } else {
       // Fall back to traditional recording
       mediaRecorder.value = new MediaRecorder(stream);
@@ -591,6 +632,7 @@ const startRecording = async () => {
     throw error;
   }
 };
+
     
 // Stop audio recording
 const stopRecording = () => {
@@ -602,7 +644,17 @@ const stopRecording = () => {
     
     // We don't stop the connection, just the stream
     if (audioStream.value) {
-      audioStream.value.getTracks().forEach(track => track.stop());
+      audioStream.value.getTracks().forEach(track => {
+        track.stop();
+        // Also remove the track from the peer connection if possible
+        const senders = webRTCConnection.value.connection?.getSenders?.();
+        if (senders) {
+          const sender = senders.find(s => s.track === track);
+          if (sender) {
+            webRTCConnection.value.connection.removeTrack(sender);
+          }
+        }
+      });
       audioStream.value = null;
     }
   }
@@ -703,6 +755,7 @@ const cleanupResources = () => {
       messagesContainer,
       canSend,
       webRTCConnection,
+      reconnectWebRTC,
       streamingActive,
       objectives,
       userCharacter,
@@ -711,7 +764,7 @@ const cleanupResources = () => {
       formatMessage,
       playAudio,
       goBack,
-      logout
+      logout,
     };
   }
 };

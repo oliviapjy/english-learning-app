@@ -88,15 +88,292 @@ export default {
       });
   },
   
-  // Initialize WebRTC connection
+  // Initialize WebRTC connection - updated implementation
   initializeWebRTC(conversationId, onConnected, onMessage, onDisconnect) {
-    return this.getWebRTCToken(conversationId)
-      .then(tokenData => {
-        return this.setupWebRTCConnection(tokenData, onConnected, onMessage, onDisconnect);
-      });
+    // Create a new RTCPeerConnection
+    const configuration = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+        // Add your TURN servers here if needed
+      ]
+    };
+    
+    const connection = new RTCPeerConnection(configuration);
+    let dataChannel = null;
+    
+    // Connection state tracking
+    let isInitiator = false;
+    let isConnecting = false;
+    let hasLocalDescription = false;
+    let hasRemoteDescription = false;
+    
+    // Handle ICE candidate events
+    connection.onicecandidate = async (event) => {
+      if (event.candidate) {
+        try {
+          // Send your ICE candidate to the server
+          await sendSignalingMessage({
+            type: 'ice-candidate',
+            conversationId,
+            candidate: event.candidate
+          });
+        } catch (error) {
+          console.error('Error sending ICE candidate:', error);
+        }
+      }
+    };
+    
+    // Handle connection state changes
+    connection.onconnectionstatechange = () => {
+      console.log('WebRTC connection state:', connection.connectionState);
+      
+      if (connection.connectionState === 'connected') {
+        isConnecting = false;
+        if (onConnected && dataChannel) {
+          onConnected(dataChannel);
+        }
+      } else if (connection.connectionState === 'disconnected' || 
+                connection.connectionState === 'failed' || 
+                connection.connectionState === 'closed') {
+        if (onDisconnect) {
+          onDisconnect();
+        }
+      }
+    };
+    
+    // Handle incoming data channel
+    connection.ondatachannel = (event) => {
+      dataChannel = event.channel;
+      setupDataChannel(dataChannel, onMessage);
+    };
+    
+    // Handle incoming tracks
+    connection.ontrack = (event) => {
+      if (onMessage && event.streams) {
+        onMessage({
+          type: 'audio-track',
+          track: event.track,
+          streams: event.streams
+        });
+      }
+    };
+    
+    // Create an API to handle WebRTC operations
+    const webRTCApi = {
+      // Add a local media stream (like microphone audio)
+      async addLocalStream(stream) {
+        if (!stream) return;
+        
+        // Add tracks from the stream to the connection
+        stream.getTracks().forEach(track => {
+          connection.addTrack(track, stream);
+        });
+        
+        // If we're not already connecting, initiate the connection
+        if (!isConnecting) {
+          await webRTCApi.initiateConnection();
+        }
+        
+        return true;
+      },
+      
+      // Initiate connection as the caller
+      async initiateConnection() {
+        try {
+          isInitiator = true;
+          isConnecting = true;
+          
+          // Create a data channel if we're the initiator
+          if (!dataChannel) {
+            dataChannel = connection.createDataChannel('chat');
+            setupDataChannel(dataChannel, onMessage);
+          }
+          
+          // Create and set local description (offer)
+          const offer = await connection.createOffer();
+          await connection.setLocalDescription(offer);
+          hasLocalDescription = true;
+          
+          // Send the offer to the server
+          await sendSignalingMessage({
+            type: 'offer',
+            conversationId,
+            sdp: connection.localDescription
+          });
+          
+          return true;
+        } catch (error) {
+          console.error('Error initiating WebRTC connection:', error);
+          isConnecting = false;
+          return false;
+        }
+      },
+      
+      // Process incoming signaling messages
+      async processSignalingMessage(message) {
+        try {
+          if (!message) return false;
+          
+          if (message.type === 'offer') {
+            // If we already have a local description and get an offer, we're in conflict
+            // The peer with the lower ID should be the initiator
+            if (hasLocalDescription && isInitiator) {
+              // If we've already set our local description as an offer,
+              // we need to compare IDs or some other conflict resolution
+              // Here we'll just reset and accept their offer
+              await connection.setLocalDescription(null);
+              hasLocalDescription = false;
+              isInitiator = false;
+            }
+            
+            // Set the remote description (their offer)
+            await connection.setRemoteDescription(new RTCSessionDescription(message.sdp));
+            hasRemoteDescription = true;
+            
+            // Create and set the local description (answer)
+            const answer = await connection.createAnswer();
+            await connection.setLocalDescription(answer);
+            hasLocalDescription = true;
+            
+            // Send the answer
+            await sendSignalingMessage({
+              type: 'answer',
+              conversationId,
+              sdp: connection.localDescription
+            });
+            
+            isConnecting = true;
+          } 
+          else if (message.type === 'answer') {
+            // Make sure we're in the right state - we should have a local offer
+            if (!hasLocalDescription || !isInitiator) {
+              console.error('Received answer but not expecting one');
+              return false;
+            }
+            
+            // Important: Check current signaling state before setting remote description
+            if (connection.signalingState === 'have-local-offer') {
+              await connection.setRemoteDescription(new RTCSessionDescription(message.sdp));
+              hasRemoteDescription = true;
+            } else {
+              console.error('Cannot set remote answer in current state:', connection.signalingState);
+            }
+          } 
+          else if (message.type === 'ice-candidate' && message.candidate) {
+            // Add ICE candidate if connection is ready
+            if (connection.remoteDescription && connection.localDescription) {
+              await connection.addIceCandidate(new RTCIceCandidate(message.candidate));
+            } else {
+              // Queue the candidate for later if we're not ready
+              // You might want to implement a queue for these
+              console.warn('Received ICE candidate but connection not ready');
+            }
+          }
+          
+          return true;
+        } catch (error) {
+          console.error('Error processing signaling message:', error);
+          return false;
+        }
+      },
+      
+      // Method to send data through the data channel
+      sendData(data) {
+        if (dataChannel && dataChannel.readyState === 'open') {
+          dataChannel.send(JSON.stringify(data));
+          return true;
+        }
+        return false;
+      },
+      
+      // Close the connection
+      close() {
+        if (dataChannel) {
+          dataChannel.close();
+          dataChannel = null;
+        }
+        
+        if (connection) {
+          connection.close();
+        }
+        
+        // Clear any polling intervals
+        clearInterval(pollInterval);
+        clearInterval(connectionCheckInterval);
+      }
+    };
+    
+    // Helper function to set up data channel
+    function setupDataChannel(channel, messageCallback) {
+      channel.onopen = () => {
+        console.log('Data channel opened');
+      };
+      
+      channel.onclose = () => {
+        console.log('Data channel closed');
+      };
+      
+      channel.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (messageCallback) {
+            messageCallback(data);
+          }
+        } catch (error) {
+          console.error('Error parsing data channel message:', error);
+        }
+      };
+    }
+    
+    // Helper function to send signaling messages to the server
+    async function sendSignalingMessage(data) {
+      try {
+        // Use the existing API endpoint structure
+        const response = await apiClient.post('/webrtc/signaling', {
+          ...data
+        });
+        
+        return response.data;
+      } catch (error) {
+        console.error('Error sending signaling message:', error);
+        throw error;
+      }
+    }
+    
+    // Set up a polling mechanism to check for incoming signaling messages
+    const pollInterval = setInterval(async () => {
+      try {
+        // Use the existing API endpoint structure
+        const response = await apiClient.get(`/webrtc/signaling?conversationId=${conversationId}`);
+        const messages = response.data;
+        
+        if (messages && messages.length > 0) {
+          for (const message of messages) {
+            await webRTCApi.processSignalingMessage(message);
+          }
+        }
+      } catch (error) {
+        console.error('Error polling for signaling messages:', error);
+      }
+    }, 1000);  // Poll every second
+    
+    // Check for connection status
+    const connectionCheckInterval = setInterval(() => {
+      if (connection.connectionState === 'connected') {
+        clearInterval(connectionCheckInterval);
+      } else if (!isConnecting && !hasRemoteDescription) {
+        // Attempt to initiate connection if we haven't already
+        webRTCApi.initiateConnection().catch(error => {
+          console.error('Failed to initiate connection:', error);
+        });
+      }
+    }, 5000);  // Check every 5 seconds
+    
+    return webRTCApi;
   },
   
-  // Set up WebRTC connection with signaling
+  // This maintains the previous implementation for backward compatibility
   setupWebRTCConnection(tokenData, onConnected, onMessage, onDisconnect) {
     const { token, roomId } = tokenData;
     
@@ -335,35 +612,38 @@ export default {
       });
   },
   
-// Direct audio streaming via WebRTC
-streamAudioToServer(stream, conversationId, onResponse) {
-  return this.initializeWebRTC(
-    conversationId,
-    // On Connected callback
-    (channel) => {
-      console.log('WebRTC audio channel connected');
-      // Inform the server that we're ready to stream
-      channel.send(JSON.stringify({
-        type: 'stream-ready',
-        conversationId
-      }));
-    },
-    // On Message callback
-    (data) => {
-      if (data.type === 'transcription') {
-        onResponse(data.text);
-      } else if (data.type === 'error') {
-        console.error('Audio streaming error:', data.error);
+  // Direct audio streaming via WebRTC - updated to use new implementation
+  streamAudioToServer(stream, conversationId, onResponse) {
+    const rtcApi = this.initializeWebRTC(
+      conversationId,
+      // On Connected callback
+      (channel) => {
+        console.log('WebRTC audio channel connected');
+        // Inform the server that we're ready to stream
+        channel.send(JSON.stringify({
+          type: 'stream-ready',
+          conversationId
+        }));
+      },
+      // On Message callback
+      (data) => {
+        if (data.type === 'transcription') {
+          onResponse(data.text);
+        } else if (data.type === 'error') {
+          console.error('Audio streaming error:', data.error);
+        }
+      },
+      // On Disconnect callback
+      () => {
+        console.log('WebRTC audio connection closed');
       }
-    },
-    // On Disconnect callback
-    () => {
-      console.log('WebRTC audio connection closed');
-    }
-  ).then(rtcConnection => {
+    );
+    
     // Add the audio stream to the connection
-    rtcConnection.addLocalStream(stream);
-    return rtcConnection;
-  });
-}
+    rtcApi.addLocalStream(stream).catch(error => {
+      console.error('Failed to add local stream:', error);
+    });
+    
+    return rtcApi;
+  }
 };
