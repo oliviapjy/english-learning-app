@@ -104,12 +104,14 @@
         }
       });
       
-const startPractice = async () => {
+      const startPractice = async () => {
         if (selectedEnvironmentIndex.value === null) return;
         
         try {
           // Determine the environment type based on topic or use default
-          selectedEnvironment.value = selectedTopic.value.environment || 'everyday';
+          selectedEnvironment.value = selectedTopic.value.environment || 'Everyday Conversations';
+          
+          console.log(`Starting practice with environment: ${selectedEnvironment.value}`);
           
           // Create a new conversation with the selected topic
           const conversation = await conversationStore.createConversation(selectedEnvironmentIndex.value);

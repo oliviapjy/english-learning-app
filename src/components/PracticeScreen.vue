@@ -184,13 +184,15 @@ export default {
       }
     };
     
-    // Setup realtime connection
-    const setupRealtimeConnection = () => {
-  realtimeConnection = api.connectRealtimeChat(
-    handleRealtimeMessage,
-    handleRealtimeError
-  );
-};
+// Setup realtime connection
+const setupRealtimeConnection = () => {
+      realtimeConnection = api.connectRealtimeChat(
+        handleRealtimeMessage,
+        handleRealtimeError
+      );
+      
+      console.log(`Setting up realtime connection with environment: ${props.environment}`);
+    };
     
     // Handle incoming messages from the realtime API
     const handleRealtimeMessage = (data) => {
