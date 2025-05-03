@@ -1,41 +1,52 @@
 <!-- src/components/layout/TheSidebar.vue -->
 <template>
-  <div class="sidebar">
+  <div class="sidebar" :class="{ collapsed: isCollapsed }">
     <div class="sidebar-header">
       <img src="../../assets/app_logo_white.png" alt="App Logo" class="app-logo" />
     </div>
-    <h3>BlinkED</h3>
+    <h3 v-show="!isCollapsed">BlinkED</h3>
     <nav class="sidebar-nav">
       <router-link to="/home" class="nav-item" :class="{ active: currentRoute === '/home' }">
         <span class="nav-icon">📚</span>
-        <span>Conversations</span>
+        <span v-show="!isCollapsed">Conversations</span>
       </router-link>
       <router-link to="/practice-list" class="nav-item" :class="{ active: currentRoute === '/practice-list' }">
         <span class="nav-icon">🎯</span>
-        <span>Practice</span>
+        <span v-show="!isCollapsed">Practice</span>
       </router-link>
       <router-link to="/info-board" class="nav-item" :class="{ active: currentRoute === '/info-board' }">
         <span class="nav-icon">📋</span>
-        <span>Opportunities</span>
+        <span v-show="!isCollapsed">Opportunities</span>
       </router-link>
       <router-link to="/friends" class="nav-item" :class="{ active: currentRoute === '/friends' }">
         <span class="nav-icon">👥</span>
-        <span>Friends</span>
+        <span v-show="!isCollapsed">Friends</span>
       </router-link>
       <router-link to="/profile" class="nav-item" :class="{ active: currentRoute === '/profile' }">
         <span class="nav-icon">👤</span>
-        <span>Profile</span>
+        <span v-show="!isCollapsed">Profile</span>
       </router-link>
     </nav>
-    <div class="user-profile">
+    <div class="toggle-container">
+      <button @click="toggleSidebar" class="toggle-btn">
+        <span v-if="isCollapsed">👉</span>
+        <span v-else>👈</span>
+      </button>
+    </div>
+    <div class="user-profile" v-show="!isCollapsed">
       <span class="username">{{ user.name }}</span>
       <button @click="$emit('logout')" class="logout-btn">Logout</button>
+    </div>
+    <div class="user-profile-mini" v-show="isCollapsed">
+      <button @click="$emit('logout')" class="logout-btn-mini" title="Logout">
+        <span>🚪</span>
+      </button>
     </div>
   </div>
 </template>
 
 <script>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 export default {
@@ -46,13 +57,21 @@ export default {
       required: true
     }
   },
-  emits: ['logout'],
-  setup() {
+  emits: ['logout', 'collapse-change'],
+  setup(props, { emit }) {
     const route = useRoute();
     const currentRoute = computed(() => route.path);
+    const isCollapsed = ref(false);
+    
+    const toggleSidebar = () => {
+      isCollapsed.value = !isCollapsed.value;
+      emit('collapse-change', isCollapsed.value);
+    };
     
     return {
-      currentRoute
+      currentRoute,
+      isCollapsed,
+      toggleSidebar
     };
   }
 };
@@ -66,6 +85,14 @@ export default {
   padding: 0 0 20px;
   display: flex;
   flex-direction: column;
+  transition: width 0.3s ease;
+  height: 100vh;
+  position: relative;
+}
+
+.sidebar.collapsed {
+  width: 60px;
+  overflow: hidden;
 }
 
 .sidebar-header {
@@ -77,10 +104,16 @@ export default {
 .app-logo {
   max-width: 120px;
   height: auto;
+  transition: max-width 0.3s ease;
+}
+
+.collapsed .app-logo {
+  max-width: 30px;
 }
 
 h3 {
   margin: 15px 20px;
+  transition: opacity 0.2s;
 }
 
 /* Navigation styles */
@@ -99,6 +132,11 @@ h3 {
   transition: background-color 0.2s;
 }
 
+.collapsed .nav-item {
+  padding: 12px;
+  justify-content: center;
+}
+
 .nav-item:hover {
   background-color: #34495e;
 }
@@ -108,9 +146,40 @@ h3 {
   border-left: 4px solid #3498db;
 }
 
+.collapsed .nav-item.active {
+  border-left: 2px solid #3498db;
+}
+
 .nav-icon {
   margin-right: 12px;
   font-size: 18px;
+}
+
+.collapsed .nav-icon {
+  margin-right: 0;
+}
+
+.toggle-container {
+  display: flex;
+  justify-content: flex-end;
+  padding: 5px 15px;
+}
+
+.toggle-btn {
+  background-color: #34495e;
+  border: none;
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggle-btn:hover {
+  background-color: #2c3e50;
 }
 
 .user-profile {
@@ -120,6 +189,13 @@ h3 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.user-profile-mini {
+  margin-top: auto;
+  padding: 15px 0;
+  display: flex;
+  justify-content: center;
 }
 
 .username {
@@ -137,5 +213,13 @@ h3 {
 
 .logout-btn:hover {
   background-color: rgba(255, 255, 255, 0.1);
+}
+
+.logout-btn-mini {
+  background-color: transparent;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 16px;
 }
 </style>
