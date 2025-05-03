@@ -1,4 +1,4 @@
-// Updated src/services/api.js
+// src/services/api.js
 import axios from 'axios';
 
 // Create axios instance
@@ -8,6 +8,14 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+// WebRTC configuration
+const rtcConfig = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
+};
 
 export default {
   // Send message to chat API with context
@@ -70,6 +78,197 @@ export default {
     };
   },
   
+  // Get ephemeral token for WebRTC session
+  getWebRTCToken(conversationId) {
+    return apiClient.post('/webrtc/token', { conversationId })
+      .then(response => response.data)
+      .catch(error => {
+        console.error('Error getting WebRTC token:', error);
+        throw error;
+      });
+  },
+  
+  // Initialize WebRTC connection
+  initializeWebRTC(conversationId, onConnected, onMessage, onDisconnect) {
+    return this.getWebRTCToken(conversationId)
+      .then(tokenData => {
+        return this.setupWebRTCConnection(tokenData, onConnected, onMessage, onDisconnect);
+      });
+  },
+  
+  // Set up WebRTC connection with signaling
+  setupWebRTCConnection(tokenData, onConnected, onMessage, onDisconnect) {
+    const { token, roomId } = tokenData;
+    
+    // Create a new RTCPeerConnection
+    const peerConnection = new RTCPeerConnection(rtcConfig);
+    
+    // Set up data channel for text messages
+    const dataChannel = peerConnection.createDataChannel('chat');
+    
+    // Data channel event handlers
+    dataChannel.onopen = () => {
+      console.log('WebRTC data channel open');
+      if (onConnected) onConnected(dataChannel);
+    };
+    
+    dataChannel.onmessage = (event) => {
+      console.log('WebRTC data channel message received:', event.data);
+      if (onMessage) onMessage(JSON.parse(event.data));
+    };
+    
+    dataChannel.onclose = () => {
+      console.log('WebRTC data channel closed');
+      if (onDisconnect) onDisconnect();
+    };
+    
+    // Set up signaling with WebSocket
+    const signalingUrl = `ws://127.0.0.1:8000/webrtc/signaling?token=${token}&room=${roomId}`;
+    const signalingSocket = new WebSocket(signalingUrl);
+    
+    signalingSocket.onopen = () => {
+      console.log('Signaling WebSocket connected');
+      // Create and send offer
+      this.createAndSendOffer(peerConnection, signalingSocket);
+    };
+    
+    signalingSocket.onmessage = async (event) => {
+      const message = JSON.parse(event.data);
+      
+      switch (message.type) {
+        case 'offer':
+          await this.handleRemoteOffer(peerConnection, message.offer, signalingSocket);
+          break;
+        
+        case 'answer':
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(message.answer));
+          console.log('Remote answer set');
+          break;
+        
+        case 'ice-candidate':
+          if (message.candidate) {
+            try {
+              await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+              console.log('Added ICE candidate');
+            } catch (error) {
+              console.error('Error adding ICE candidate:', error);
+            }
+          }
+          break;
+          
+        case 'error':
+          console.error('Signaling error:', message.error);
+          break;
+      }
+    };
+    
+    // ICE candidate event handler
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        signalingSocket.send(JSON.stringify({
+          type: 'ice-candidate',
+          candidate: event.candidate
+        }));
+      }
+    };
+    
+    // Track connection state changes
+    peerConnection.onconnectionstatechange = () => {
+      console.log('WebRTC connection state:', peerConnection.connectionState);
+      
+      if (peerConnection.connectionState === 'disconnected' || 
+          peerConnection.connectionState === 'failed' ||
+          peerConnection.connectionState === 'closed') {
+        if (onDisconnect) onDisconnect();
+      }
+    };
+    
+    // Set up audio/video tracks handler
+    peerConnection.ontrack = (event) => {
+      console.log('Remote track received:', event.track.kind);
+      // Handle incoming audio/video tracks
+      if (event.track.kind === 'audio' && onMessage) {
+        onMessage({
+          type: 'audio-track',
+          track: event.track,
+          streams: event.streams
+        });
+      }
+    };
+    
+    return {
+      peerConnection,
+      dataChannel,
+      signalingSocket,
+      
+      // Method to send data through the data channel
+      sendData(data) {
+        if (dataChannel.readyState === 'open') {
+          dataChannel.send(JSON.stringify(data));
+          return true;
+        }
+        return false;
+      },
+      
+      // Add local media stream
+      async addLocalStream(stream) {
+        stream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, stream);
+        });
+        
+        // Renegotiate connection after adding tracks
+        await this.createAndSendOffer(peerConnection, signalingSocket);
+      },
+      
+      // Close the connection
+      close() {
+        if (dataChannel) {
+          dataChannel.close();
+        }
+        
+        if (signalingSocket) {
+          signalingSocket.close();
+        }
+        
+        if (peerConnection) {
+          peerConnection.close();
+        }
+      }
+    };
+  },
+  
+  // Create and send WebRTC offer
+  async createAndSendOffer(peerConnection, signalingSocket) {
+    try {
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      
+      signalingSocket.send(JSON.stringify({
+        type: 'offer',
+        offer: peerConnection.localDescription
+      }));
+    } catch (error) {
+      console.error('Error creating offer:', error);
+    }
+  },
+  
+  // Handle remote WebRTC offer
+  async handleRemoteOffer(peerConnection, offer, signalingSocket) {
+    try {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      
+      signalingSocket.send(JSON.stringify({
+        type: 'answer',
+        answer: peerConnection.localDescription
+      }));
+    } catch (error) {
+      console.error('Error handling offer:', error);
+    }
+  },
+  
   // Transcribe audio file
   transcribeAudio(audioBlob) {
     // Do some basic validation
@@ -123,6 +322,43 @@ export default {
     .catch(error => {
       console.error("TTS error:", error);
       throw error;
+    });
+  },
+  
+  // Get WebRTC connection status
+  checkWebRTCStatus(token) {
+    return apiClient.get(`/webrtc/status?token=${token}`)
+      .then(response => response.data)
+      .catch(error => {
+        console.error('Error checking WebRTC status:', error);
+        return { connected: false, error: error.message };
+      });
+  },
+  
+  // Direct audio streaming via WebRTC
+  streamAudioToServer(stream, conversationId, onResponse) {
+    return this.initializeWebRTC(
+      conversationId,
+      // On Connected callback
+      (dataChannel) => {
+        console.log('WebRTC audio channel connected');
+      },
+      // On Message callback
+      (data) => {
+        if (data.type === 'transcription') {
+          onResponse(data.text);
+        } else if (data.type === 'error') {
+          console.error('Audio streaming error:', data.error);
+        }
+      },
+      // On Disconnect callback
+      () => {
+        console.log('WebRTC audio connection closed');
+      }
+    ).then(rtcConnection => {
+      // Add the audio stream to the connection
+      rtcConnection.addLocalStream(stream);
+      return rtcConnection;
     });
   }
 };
