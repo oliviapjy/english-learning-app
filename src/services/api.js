@@ -1,9 +1,9 @@
 // src/services/api.js
 import axios from 'axios';
 
-// Create axios instance
+// Create axios instance using environment variables
 const apiClient = axios.create({
-  baseURL: 'http://127.0.0.1:8000',  // Adjust this to your FastAPI server URL
+  baseURL: process.env.VUE_APP_API_URL || 'http://127.0.0.1:8000',  // Use Firebase URL from env or fallback
   headers: {
     'Content-Type': 'application/json',
   },
@@ -13,7 +13,7 @@ const apiClient = axios.create({
 const rtcConfig = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
+    { urls: 'stun1.l.google.com:19302' }
   ]
 };
 
@@ -41,7 +41,9 @@ export default {
         })
         .then(() => {
           // After successful POST, establish the EventSource connection for streaming response
-          const eventSource = new EventSource(`http://127.0.0.1:8000/realtime-chat?_=${Date.now()}`);
+          // Use API URL from environment for consistency
+          const baseUrl = process.env.VUE_APP_API_URL || 'http://127.0.0.1:8000';
+          const eventSource = new EventSource(`${baseUrl}/realtime-chat?_=${Date.now()}`);
           
           // Handle incoming messages
           eventSource.onmessage = (event) => {
@@ -399,8 +401,13 @@ export default {
       if (onDisconnect) onDisconnect();
     };
     
-    // Set up signaling with WebSocket
-    const signalingUrl = `ws://127.0.0.1:8000/webrtc/signaling?token=${token}&room=${roomId}`;
+    // Set up signaling with WebSocket - using environment variable
+    const baseUrl = process.env.VUE_APP_API_URL || 'http://127.0.0.1:8000';
+    const wsProtocol = baseUrl.startsWith('https') ? 'wss' : 'ws';
+    // Extract hostname from baseURL
+    const baseUrlObj = new URL(baseUrl);
+    const signalingUrl = `${wsProtocol}://${baseUrlObj.host}/webrtc/signaling?token=${token}&room=${roomId}`;
+    
     const signalingSocket = new WebSocket(signalingUrl);
     
     signalingSocket.onopen = () => {
