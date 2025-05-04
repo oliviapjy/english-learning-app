@@ -650,6 +650,7 @@ export default {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  position: relative;
 }
 
 .chat-area {
@@ -658,10 +659,13 @@ export default {
   flex-direction: column;
   background-color: #f5f5f5;
   transition: margin-left 0.3s ease;
+  margin-left: 0; /* Default margin */
+  min-width: 0; /* This prevents the chat area from expanding beyond its container */
 }
 
 .chat-area.with-collapsed-sidebar {
-  margin-left: -190px; /* Adjust based on collapsed sidebar width */
+  margin-left: 0; /* Keep it aligned with the collapsed sidebar */
+  /* The sidebar will take care of its own width reduction */
 }
 
 .messages-container {

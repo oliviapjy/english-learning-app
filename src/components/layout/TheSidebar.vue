@@ -106,11 +106,13 @@ export default {
   transition: width 0.3s ease;
   height: 100vh;
   position: relative;
+  z-index: 10; /* Add z-index to ensure sidebar stays above other content */
 }
 
 .sidebar.collapsed {
   width: 60px;
   overflow: hidden;
+  /* No need for position: absolute since we'll fix the chat area instead */
 }
 
 .sidebar-header {
