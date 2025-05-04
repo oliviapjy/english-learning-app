@@ -1,29 +1,24 @@
-<!-- src/components/Conversation.vue (Updated with Markdown Support) -->
+<!-- src/components/Conversation.vue (Updated with TheSidebar and Markdown Support) -->
 <template>
   <div class="conversation-container">
-    <div class="sidebar">
-      <div class="sidebar-header">
-        <img src="../assets/app_logo_white.png" alt="App Logo" class="app-logo" />
-      </div>
-      <h3>Conversation</h3>
-      <button @click="goHome" class="home-btn">← Back to Home</button>
-      
-      <div v-if="currentConversation">
+    <!-- Replace the sidebar with TheSidebar component -->
+    <TheSidebar 
+      :user="user" 
+      @logout="logout"
+      @collapse-change="handleSidebarCollapse"
+    >
+      <!-- Add practice content as a slot for the sidebar -->
+      <template #extra-content v-if="currentConversation">
         <div class="topic-info">
           <h4>{{ currentConversation.topic.title }}</h4>
           <span class="level-badge">{{ currentConversation.topic.level }}</span>
           <p class="topic-desc">{{ currentConversation.topic.description }}</p>
           <button @click="goPractice" class="practice-btn">Practice this topic</button>
         </div>
-      </div>
-      
-      <div class="user-profile">
-        <span class="username">{{ user.name }}</span>
-        <button @click="logout" class="logout-btn">Logout</button>
-      </div>
-    </div>
+      </template>
+    </TheSidebar>
     
-    <div class="chat-area">
+    <div class="chat-area" :class="{ 'with-collapsed-sidebar': sidebarCollapsed }">
       <div class="messages-container" ref="messagesContainer">
         <div 
           v-for="(message, index) in messages" 
@@ -115,9 +110,13 @@ import { useConversationStore } from '../stores/conversation';
 import apiService from '../services/api'; // Import the API service
 import { marked } from 'marked'; // Import marked library for Markdown parsing
 import DOMPurify from 'dompurify'; // Import DOMPurify for sanitizing HTML
+import TheSidebar from './layout/TheSidebar.vue'; // Import the sidebar component
 
 export default {
   name: 'ConversationComponent',
+  components: {
+    TheSidebar
+  },
   setup() {
     const router = useRouter();
     const route = useRoute();
@@ -126,6 +125,7 @@ export default {
     const user = ref({ name: 'User' });
     const messagesContainer = ref(null);
     const userMessage = ref('');
+    const sidebarCollapsed = ref(false);
     
     const audioContext = ref(null);
     const analyser = ref(null);
@@ -152,22 +152,27 @@ export default {
     const isLoading = ref(false);
 
     const renderMarkdown = (text) => {
-  if (!text) return '';
-  
-  // Convert markdown to HTML using marked
-  // You can configure marked options here to better handle your specific needs
-  const rawHtml = marked(text, {
-    gfm: true,         // GitHub Flavored Markdown
-    breaks: true,      // Add line breaks
-    headerIds: true,   // Generate IDs for headers
-    mangle: false      // Don't escape HTML
-  });
-  
-  // Sanitize the HTML to prevent XSS
-  const cleanHtml = DOMPurify.sanitize(rawHtml);
-  
-  return cleanHtml;
-};
+      if (!text) return '';
+      
+      // Convert markdown to HTML using marked
+      // You can configure marked options here to better handle your specific needs
+      const rawHtml = marked(text, {
+        gfm: true,         // GitHub Flavored Markdown
+        breaks: true,      // Add line breaks
+        headerIds: true,   // Generate IDs for headers
+        mangle: false      // Don't escape HTML
+      });
+      
+      // Sanitize the HTML to prevent XSS
+      const cleanHtml = DOMPurify.sanitize(rawHtml);
+      
+      return cleanHtml;
+    };
+
+    // Handle sidebar collapse event
+    const handleSidebarCollapse = (collapsed) => {
+      sidebarCollapsed.value = collapsed;
+    };
 
     // Check if user is logged in
     onMounted(async () => {
@@ -205,17 +210,16 @@ export default {
     });
     
     const goPractice = () => {
-  if (currentConversation.value && currentConversation.value.id) {
-    console.log(`Navigating to practice with conversation ID: ${currentConversation.value.id}`);
-    router.push({
-      name: 'Practice',
-      params: { id: currentConversation.value.id }
-    });
-  } else {
-    console.error('Cannot navigate to practice: No conversation ID available');
-  }
-};
-
+      if (currentConversation.value && currentConversation.value.id) {
+        console.log(`Navigating to practice with conversation ID: ${currentConversation.value.id}`);
+        router.push({
+          name: 'Practice',
+          params: { id: currentConversation.value.id }
+        });
+      } else {
+        console.error('Cannot navigate to practice: No conversation ID available');
+      }
+    };
 
     const currentConversation = computed(() => conversationStore.currentConversation);
     
@@ -604,10 +608,6 @@ export default {
       }
     };
     
-    const goHome = () => {
-      router.push('/home');
-    };
-    
     const logout = () => {
       authStore.logout();
       router.push('/login');
@@ -620,11 +620,13 @@ export default {
       userMessage,
       sendMessage,
       formatTime,
-      goHome,
       logout,
-      goPractice, 
+      goPractice,
       messagesContainer,
       renderMarkdown,
+      // Sidebar state
+      sidebarCollapsed,
+      handleSidebarCollapse,
       // Audio functionality
       inputType,
       isRecording,
@@ -650,104 +652,16 @@ export default {
   overflow: hidden;
 }
 
-.sidebar {
-  width: 250px;
-  background-color: #2c3e50;
-  color: white;
-  padding: 0 0 20px;
-  display: flex;
-  flex-direction: column;
-}
-
-.sidebar-header {
-  background-color: #1a2530;
-  padding: 15px;
-  text-align: center;
-}
-
-.app-logo {
-  max-width: 120px;
-  height: auto;
-}
-
-h3 {
-  margin: 15px 20px 5px;
-}
-
-.home-btn {
-  margin: 5px 20px 15px;
-  background-color: transparent;
-  border: none;
-  color: #3498db;
-  cursor: pointer;
-  text-align: left;
-  padding: 0;
-}
-
-.home-btn:hover {
-  color: #2980b9;
-}
-
-.topic-info {
-  padding: 15px 20px;
-  border-top: 1px solid #34495e;
-  border-bottom: 1px solid #34495e;
-  margin-bottom: 15px;
-}
-
-.topic-info h4 {
-  margin: 0 0 5px;
-  font-size: 16px;
-}
-
-.level-badge {
-  background-color: #3498db;
-  color: white;
-  padding: 2px 6px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-  display: inline-block;
-}
-
-.topic-desc {
-  margin: 10px 0 0;
-  font-size: 13px;
-  color: #bdc3c7;
-  line-height: 1.4;
-}
-
-.user-profile {
-  margin-top: auto;
-  padding: 15px 20px;
-  border-top: 1px solid #34495e;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.username {
-  font-weight: 500;
-}
-
-.logout-btn {
-  background-color: transparent;
-  border: 1px solid white;
-  color: white;
-  padding: 5px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.logout-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
 .chat-area {
   flex-grow: 1;
   display: flex;
   flex-direction: column;
   background-color: #f5f5f5;
+  transition: margin-left 0.3s ease;
+}
+
+.chat-area.with-collapsed-sidebar {
+  margin-left: -190px; /* Adjust based on collapsed sidebar width */
 }
 
 .messages-container {
